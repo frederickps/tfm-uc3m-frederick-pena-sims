@@ -8,6 +8,8 @@ editor: visual
 ## Library
 
 ```{r}
+# |echo: false
+
 library(odbc)
 library(RODBC)
 library(tidyverse)
@@ -31,11 +33,13 @@ RODBC::sqlTables(con)
 Getting tables I want –\> keeping cdfgr as character to keep preceeding zeroes
 
 ```{r}
-tb_funcionalPorEntes <- RODBC::sqlFetch(con, "v_funcionalPorEntes",  
+tb_funcionalPorEntes <- RODBC::sqlFetch(con, "v_funcionalPorEntes", 
                                         as.is = c(F, F, F, F, F, F, F, T, F, F, F))
 
-tb_cuentasProgramas <- RODBC::sqlFetch(con, "tb_cuentasProgramas", as.is = TRUE)
+tb_cuentasProgramas <- RODBC::sqlFetch(con, "tb_cuentasProgramas",
+                                       as.is = TRUE)
 
+tb_cuentasProgramas <- as_tibble(tb_cuentasProgramas) 
 ```
 
 ## Processing municipal spending data
@@ -54,7 +58,6 @@ codigo_municipio <- read_excel("diccionario24.xlsx", skip = 1, col_names = TRUE)
 tb_funcionalPorEntes <- 
   tb_funcionalPorEntes |>
   mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
-
 ```
 
 Joining
@@ -63,61 +66,52 @@ Joining
 tb_funcionalPorMunicipios <- 
   tb_funcionalPorEntes |> 
   inner_join(codigo_municipio, by = "INE") |> 
-  inner_join(tb_cuentasProgramas, by ="cdfgr") |> 
-  left_join(tb_provincias, by ="Provincia")
+  inner_join(tb_cuentasProgramas, by ="cdfgr")
 ```
 
-### Number of municipalities
+### Organizing spending data per municipality
+
+Standardizing codification and reducing number of spending reasons
 
 ```{r}
-n_distinct(tb_funcionalPorMunicipios$INE)
-```
-
-7426 municipalities
-
-Where is the difference
-
-```{r}
-m <-
-  tb_funcionalPorMunicipios |>
-  mutate(CODAUTO_data = CODAUTO) |> 
-  group_by(CODAUTO_data) |> 
-  distinct(INE) |> 
-  count(CODAUTO_data)
-
-o <- 
-  codigo_municipio |>
-  mutate(CODAUTO_original = CODAUTO) |> 
-  group_by(CODAUTO_original) |> 
-  distinct(INE) |> 
-  count(CODAUTO_original)
-
-test <- cbind(m, o) |> 
-  mutate(difference = n...4 - n...2,
-         proportion = (difference/n...4)*100)
-
-test |> 
-  ggplot()+
-  geom_col(aes(CODAUTO_original, proportion)) +
-  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
-            vjust = -0.4,
-            size = 2.5) +
-  labs(title = "Share of missing Municipalities by Autonomous Region")
+Madrid <- tb_funcionalPorMunicipios |> 
+  arrange(poblacion) |> 
+  slice_head(n = 30) |> 
+  select(INE, cdfgr, importe, nombre)
 
 ```
 
-### Organising spending data per municipality
+What variables do I want to have?
 
-Standardizing codification
+Only codes with two characters
+
+-   more fine grained than the overarching descriptions but not too fine grained to produce
+
+-   not too fine grained to create too many variables
+
+-   Problem: certain municipalities will not have had an expenditure for every two charachter reason
+
+Also, deleting all mancomunidades from the dataframe.
+
+Also deleting every Entidad de ámbito territorial inferior al municipio (EATIM)
+
+-   NOMBRE from codigo_municipio and NombreEnte form database
 
 ```{r}
-
+tb_funcionalPorMunicipios <-
+  tb_funcionalPorMunicipios |> 
+  mutate(cdfgr = trimws(as.character(cdfgr)),
+         NombreEnte = trimws(as.character(NombreEnte)),
+         NOMBRE = trimws(as.character(NOMBRE))) |> 
+  filter(nchar(cdfgr) == 2 & !str_detect(NombreEnte, "^Mc") 
+         & NombreEnte == NOMBRE)
 ```
 
 Total spending per reason
 
+Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
+
 ```{r}
-# Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
 summarized_spending <- tb_funcionalPorMunicipios |> 
   group_by(cdfgr, INE) |> 
   summarize(total_spending = sum(importe)) |> 
@@ -139,4 +133,85 @@ tb_importePorPrograma <-
   group_by(INE, cdfgr) |> 
   distinct(cdfgr, .keep_all = T) |> 
   ungroup()
+
+verification1 <-
+  tb_importePorPrograma |> 
+  filter(INE == "02001") |> 
+  count(cdfgr)
+```
+
+Now calculating the share of each spending
+
+```{r}
+tb_partedeImporte <-
+  tb_importePorPrograma |> 
+  group_by(INE) |>
+  mutate(share_spending = (total_spending/total_importe)*100) |> 
+  ungroup()
+
+
+verification2 <-
+  tb_importePorPrograma |> 
+  group_by(INE) |>
+  mutate(share_spending = (total_spending/total_importe)*100) |>
+  ungroup() |> 
+  filter(INE == "28079") |> 
+  count(cdfgr)
+```
+
+Pivoting this data frame wider
+
+```{r}
+df_spending_mun_tidy <-
+  tb_partedeImporte |> 
+  select(INE, NombreEnte, CODAUTO, CPRO, CMUN, DC, NOMBRE, nombre, share_spending) |> 
+  pivot_wider(names_from = nombre,
+              values_from = share_spending)
+```
+
+### Number of municipalities
+
+```{r}
+n_distinct(df_spending_mun_tidy$INE)
+```
+
+6794 municipalities
+
+Where is the difference
+
+```{r}
+m <-
+  df_spending_mun_tidy |>
+  mutate(CODAUTO_data = CODAUTO) |> 
+  group_by(CODAUTO_data) |> 
+  distinct(INE) |> 
+  count(CODAUTO_data)
+
+o <- 
+  codigo_municipio |>
+  mutate(CODAUTO_original = CODAUTO) |> 
+  group_by(CODAUTO_original) |> 
+  distinct(INE) |> 
+  count(CODAUTO_original)
+
+difference_n_mun <- cbind(m, o) |> 
+  mutate(difference = n...4 - n...2,
+         proportion = (difference/n...4)*100)
+
+plot1 <-
+  difference_n_mun |> 
+  ggplot()+
+  geom_col(aes(CODAUTO_original, proportion)) +
+  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
+            vjust = -0.4,
+            size = 2.5) +
+  labs(title = "Share of missing Municipalities by Autonomous Region")
+
+ggsave("Plotting missing municipalities.png")
+```
+
+### Final data set for expenditure per municipality
+
+```{r}
+head(df_spending_mun_tidy)
 ```
