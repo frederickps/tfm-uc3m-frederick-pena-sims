@@ -1,0 +1,142 @@
+---
+title: "Master Thesis - Fetching and processing Data"
+author: "Frederick Pena Sims"
+format: html
+editor: visual
+---
+
+## Library
+
+```{r}
+library(odbc)
+library(RODBC)
+library(tidyverse)
+library(readxl)
+```
+
+## Getting municipal spending data
+
+Explain
+
+```{r}
+unique(odbc::odbcListDrivers()[[1]])
+
+dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Presupuestos2023.accdb"
+
+con <- RODBC::odbcConnectAccess2007(dbname)
+
+RODBC::sqlTables(con)
+```
+
+Getting tables I want –\> keeping cdfgr as character to keep preceeding zeroes
+
+```{r}
+tb_funcionalPorEntes <- RODBC::sqlFetch(con, "v_funcionalPorEntes",  
+                                        as.is = c(F, F, F, F, F, F, F, T, F, F, F))
+
+tb_cuentasProgramas <- RODBC::sqlFetch(con, "tb_cuentasProgramas", as.is = TRUE)
+
+```
+
+## Processing municipal spending data
+
+### Applying official classification
+
+Joining codigo municipio for official classification
+
+Creating common ID
+
+```{r}
+codigo_municipio <- read_excel("diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
+  mutate(INE = paste0(CPRO, CMUN),
+         Provincia = as.integer(CPRO))
+
+tb_funcionalPorEntes <- 
+  tb_funcionalPorEntes |>
+  mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
+
+```
+
+Joining
+
+```{r}
+tb_funcionalPorMunicipios <- 
+  tb_funcionalPorEntes |> 
+  inner_join(codigo_municipio, by = "INE") |> 
+  inner_join(tb_cuentasProgramas, by ="cdfgr") |> 
+  left_join(tb_provincias, by ="Provincia")
+```
+
+### Number of municipalities
+
+```{r}
+n_distinct(tb_funcionalPorMunicipios$INE)
+```
+
+7426 municipalities
+
+Where is the difference
+
+```{r}
+m <-
+  tb_funcionalPorMunicipios |>
+  mutate(CODAUTO_data = CODAUTO) |> 
+  group_by(CODAUTO_data) |> 
+  distinct(INE) |> 
+  count(CODAUTO_data)
+
+o <- 
+  codigo_municipio |>
+  mutate(CODAUTO_original = CODAUTO) |> 
+  group_by(CODAUTO_original) |> 
+  distinct(INE) |> 
+  count(CODAUTO_original)
+
+test <- cbind(m, o) |> 
+  mutate(difference = n...4 - n...2,
+         proportion = (difference/n...4)*100)
+
+test |> 
+  ggplot()+
+  geom_col(aes(CODAUTO_original, proportion)) +
+  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
+            vjust = -0.4,
+            size = 2.5) +
+  labs(title = "Share of missing Municipalities by Autonomous Region")
+
+```
+
+### Organising spending data per municipality
+
+Standardizing codification
+
+```{r}
+
+```
+
+Total spending per reason
+
+```{r}
+# Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
+summarized_spending <- tb_funcionalPorMunicipios |> 
+  group_by(cdfgr, INE) |> 
+  summarize(total_spending = sum(importe)) |> 
+  ungroup()
+
+total_importePorMunicipio <- tb_funcionalPorMunicipios |> 
+  group_by(INE) |> 
+  summarize(total_importe = sum(importe)) |> 
+  ungroup()
+```
+
+Keeping only one spending amount and spending reason per municipality
+
+```{r}
+tb_importePorPrograma <-
+  tb_funcionalPorMunicipios |> 
+  left_join(summarized_spending, by = c("cdfgr", "INE")) |>
+  left_join(total_importePorMunicipio, by = "INE") |> 
+  group_by(INE, cdfgr) |> 
+  distinct(cdfgr, .keep_all = T) |> 
+  ungroup()
+```
