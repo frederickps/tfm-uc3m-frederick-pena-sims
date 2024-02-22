@@ -169,10 +169,18 @@ df_spending_mun_tidy <-
               values_from = share_spending)
 ```
 
+Imputing zeroes as NAs mean that the municipality did not spend money on a given end.
+
+```{r}
+df_spen_imp_mun_tidy <- 
+  df_spending_mun_tidy |> 
+  mutate_if(is.numeric, ~ifelse(is.na(.), 0, .))
+```
+
 ### Number of municipalities
 
 ```{r}
-n_distinct(df_spending_mun_tidy$INE)
+n_distinct(df_spen_imp_mun_tidy$INE)
 ```
 
 6794 municipalities
@@ -181,7 +189,7 @@ Where is the difference
 
 ```{r}
 m <-
-  df_spending_mun_tidy |>
+  df_spen_imp_mun_tidy |>
   mutate(CODAUTO_data = CODAUTO) |> 
   group_by(CODAUTO_data) |> 
   distinct(INE) |> 
@@ -213,5 +221,5 @@ ggsave("Plotting missing municipalities.png")
 ### Final data set for expenditure per municipality
 
 ```{r}
-head(df_spending_mun_tidy)
+head(df_spen_imp_mun_tidy)
 ```
