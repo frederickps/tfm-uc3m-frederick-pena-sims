@@ -23,7 +23,7 @@ Explain
 ```{r}
 unique(odbc::odbcListDrivers()[[1]])
 
-dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Presupuestos2023.accdb"
+dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Liquidaciones2022.accdb"
 
 con <- RODBC::odbcConnectAccess2007(dbname)
 
@@ -38,8 +38,6 @@ tb_funcionalPorEntes <- RODBC::sqlFetch(con, "v_funcionalPorEntes",
 
 tb_cuentasProgramas <- RODBC::sqlFetch(con, "tb_cuentasProgramas",
                                        as.is = TRUE)
-
-tb_cuentasProgramas <- as_tibble(tb_cuentasProgramas) 
 ```
 
 ## Processing municipal spending data
@@ -134,6 +132,7 @@ tb_importePorPrograma <-
   distinct(cdfgr, .keep_all = T) |> 
   ungroup()
 
+# verifying that each funds destination is only listed once now per municipality
 verification1 <-
   tb_importePorPrograma |> 
   filter(INE == "02001") |> 
@@ -149,7 +148,7 @@ tb_partedeImporte <-
   mutate(share_spending = (total_spending/total_importe)*100) |> 
   ungroup()
 
-
+# verifying that each funds destination is only listed once now per municipality
 verification2 <-
   tb_importePorPrograma |> 
   group_by(INE) |>
@@ -164,7 +163,7 @@ Pivoting this data frame wider
 ```{r}
 df_spending_mun_tidy <-
   tb_partedeImporte |> 
-  select(INE, NombreEnte, CODAUTO, CPRO, CMUN, DC, NOMBRE, nombre, share_spending) |> 
+  select(INE, NombreEnte, CODAUTO, CPRO, CMUN, DC, NOMBRE, nombre, share_spending, total_importe) |> 
   pivot_wider(names_from = nombre,
               values_from = share_spending)
 ```
@@ -183,7 +182,7 @@ df_spen_imp_mun_tidy <-
 n_distinct(df_spen_imp_mun_tidy$INE)
 ```
 
-6794 municipalities
+6181 municipalities
 
 Where is the difference
 
@@ -202,9 +201,10 @@ o <-
   distinct(INE) |> 
   count(CODAUTO_original)
 
-difference_n_mun <- cbind(m, o) |> 
-  mutate(difference = n...4 - n...2,
-         proportion = (difference/n...4)*100)
+difference_n_mun <- o |> 
+  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
+  mutate(difference = n.x - n.y,
+         proportion = (difference/n.x)*100)
 
 plot1 <-
   difference_n_mun |> 
