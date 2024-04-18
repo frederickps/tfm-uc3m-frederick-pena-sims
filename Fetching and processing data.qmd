@@ -240,9 +240,7 @@ objects_to_remove <- objects[objects != object_to_keep]
 rm(list = objects_to_remove)
 ```
 
-## Unemployment
-
-Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+## Contracts
 
 Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
 
@@ -250,23 +248,10 @@ Manually changed data type to xlsx because csv did not work
 
 Idea: Adding contracts and those who register as unemployed to calculate labor force - then calculate unemployement rate
 
-E-mail Marga: Unemployment rate –\> paro/ population 16-65
 
---\> <https://datosmacro.expansion.com/paro/espana/municipios>
 
 ```{r}
-df_1 <- 
-  read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
-  rename(INE = "Codigo Municipio",
-         NOMBRE = Municipio,
-         Paro_total = "total Paro Registrado") |> 
-  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
-  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
-```
-
-```{r}
-df_2 <- 
+contratos <- 
   read_xlsx("Data/Contratos_por_municipios_2023.xlsx", skip = 1) |> 
   select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
   rename(INE = "Codigo Municipio",
@@ -274,20 +259,6 @@ df_2 <-
          Contratos_total = "Total Contratos") |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
   mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total)))
-```
-
-```{r}
-df <- merge(df_1, df_2, by = c("mes", "INE")) 
-
-df <- 
-  df |> 
-  select(-NOMBRE.y) |> 
-  rename(NOMBRE = NOMBRE.x) |> 
-  mutate(labor_force = Paro_total + Contratos_total)
-
-
-df |> 
-  filter(INE == "04003")
 ```
 
 ## Distance From Provincial Capital
@@ -393,3 +364,98 @@ n_companías <-
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
   mutate(n_companías = ifelse(is.na(n_companías), 0, n_companías))
 ```
+## Unemployment
+
+2023 data for unemployment
+
+Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+
+E-mail Marga: Unemployment rate –\> paro/ population 16-65
+
+--> slightly deflated unemployment numbers expected
+
+--\> <https://datosmacro.expansion.com/paro/espana/municipios>
+
+Idea: Using information of province activity rates to estimate the number of active population by municipality
+
+see here: https://www.ine.es/jaxiT3/Tabla.htm?t=3996&L=0
+
+If not doing that --> unemployment rate: 7.466369% -- 4% lower
+If doing that --> unemployment rate: 13.06439% -- 2% higher
+
+```{r}
+paro <- 
+  read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+### Option 1
+
+Joining activity rate by province and population stats
+
+--> then
+
+```{r}
+participation <- 
+  read_excel("Data/active_pop_prov.xls", skip = 8) |> 
+  rename(Provincia = ...1,
+         T4 = "Tasa de actividad...2",
+         T3 = "Tasa de actividad...3",
+         T2 = "Tasa de actividad...4",
+         T1 = "Tasa de actividad...5") |> 
+  mutate(Provincia = str_replace(Provincia, "^(\\S+) ", "\\1_")) |> 
+  separate(Provincia, into = c("CPRO", "Provincia"), sep = "_") |> 
+  drop_na(T4) %>%
+  mutate(part_2023 = rowMeans(select(., starts_with("T")))) |> 
+  select(CPRO, part_2023)
+
+paro_final <- 
+  paro |> 
+  group_by(INE, NOMBRE) |> 
+  summarise(mean_paro = mean(Paro_total, na.rm = T)) |> 
+  ungroup() |> 
+  left_join(codigo_municipio, by = "INE") |> 
+  rename(NOMBRE = NOMBRE.x) |> 
+  select(INE, NOMBRE, mean_paro, CPRO) |> 
+  left_join(participation, by = "CPRO") |> 
+  left_join(population, by = "INE") |> 
+  select(-NOMBRE.y) |> 
+  rename(NOMBRE = NOMBRE.x) |> 
+  rename(wrk_age = "De 16 a 64 años total") |> 
+  select(INE, NOMBRE, mean_paro, CPRO, part_2023, wrk_age) |> 
+  mutate(pop_part = (part_2023 / 100) * wrk_age,
+         ue_pct = (mean_paro / pop_part)*100) |> 
+  drop_na(ue_pct) |> 
+  select(INE, NOMBRE, ue_pct)
+
+paro_final |> 
+  summarise(l = mean(ue_pct, rm.na = T))
+```
+
+### Option 2 - too low
+
+Joining population data
+
+```{r}
+paro_final <- 
+  paro |>  
+  group_by(INE, NOMBRE) |> 
+  summarise(mean_paro = mean(Paro_total, na.rm = T)) |> 
+  ungroup() |> 
+  left_join(population, by = "INE") |> 
+  select(-NOMBRE.y) |> 
+  rename(NOMBRE = NOMBRE.x) |> 
+  rename(wrk_age = "De 16 a 64 años total") |> 
+  mutate(ue_pct = (mean_paro/wrk_age)*100) |> 
+  drop_na() |> 
+  select(INE, NOMBRE, ue_pct)
+
+paro_final |> 
+  summarise(l = mean(ue_pct, rm.na = T))
+```
+4% difference for yearly average
