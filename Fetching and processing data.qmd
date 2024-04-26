@@ -7,9 +7,8 @@ editor: visual
 
 ## Library
 
-```{r}
-# |echo: false
-
+```{r setup, include=FALSE}
+options(scipen = 999)
 library(odbc)
 library(RODBC)
 library(tidyverse)
@@ -139,6 +138,8 @@ verification1 <-
   tb_importePorPrograma |> 
   filter(INE == "02001") |> 
   count(cdfgr)
+
+verification1
 ```
 
 Now calculating the share of each spending
@@ -158,6 +159,8 @@ verification2 <-
   ungroup() |> 
   filter(INE == "28079") |> 
   count(cdfgr)
+
+verification2
 ```
 
 Pivoting this data frame wider
@@ -165,7 +168,7 @@ Pivoting this data frame wider
 ```{r}
 df_spending_mun_tidy <-
   tb_partedeImporte |> 
-  select(INE, NombreEnte, CODAUTO, CPRO, CMUN, DC, NOMBRE, nombre, share_spending, total_importe) |> 
+  select(INE, NOMBRE, CODAUTO, CPRO, nombre, share_spending, total_importe) |> 
   pivot_wider(names_from = nombre,
               values_from = share_spending)
 ```
@@ -175,7 +178,8 @@ Imputing zeroes as NAs mean that the municipality did not spend money on a given
 ```{r}
 df_spen_imp_mun_tidy <- 
   df_spending_mun_tidy |> 
-  mutate_if(is.numeric, ~ifelse(is.na(.), 0, .))
+  mutate_if(is.numeric, ~ifelse(is.na(.), 0, .)) |> 
+  rename(total_MUN = total_importe)
 ```
 
 ### Number of municipalities
@@ -231,14 +235,192 @@ ggsave("Plotting missing municipalities.png", bg = "white")
 head(df_spen_imp_mun_tidy)
 ```
 
-### Deleting remaining objects
+## CCAA expenditure
 
 ```{r}
-objects <- ls()
-object_to_keep <- "df_spen_imp_mun_tidy"
-objects_to_remove <- objects[objects != object_to_keep]
-rm(list = objects_to_remove)
+CCAA_01 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 3, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "01",
+         total = total * 1000000)
+
+CCAA_02 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 4, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "02",
+         total = total * 1000000)
+
+CCAA_03 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 5, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "03",
+         total = total * 1000000)
+
+CCAA_04 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 6, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "04",
+         total = total * 1000000)
+
+CCAA_05 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 7, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "05",
+         total = total * 1000000)
+
+CCAA_06 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 8, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "06",
+         total = total * 1000000)
+
+CCAA_07 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 10, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "07",
+         total = total * 1000000)
+
+CCAA_08 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 9, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "08",
+         total = total * 1000000)
+
+CCAA_09 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 11, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "09",
+         total = total * 1000000)
+
+CCAA_10 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 18, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "10",
+         total = total * 1000000)
+
+CCAA_11 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 12, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "11",
+         total = total * 1000000)
+
+CCAA_12 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 13, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "12",
+         total = total * 1000000)
+
+CCAA_13 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 14, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "13",
+         total = total * 1000000)
+
+CCAA_14 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 15, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "14",
+         total = total * 1000000)
+
+CCAA_15 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 16, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "15",
+         total = total * 1000000)
+
+CCAA_16 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 19, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "16",
+         total = total * 1000000)
+
+CCAA_17 <- 
+  read_excel("Data/CCAA_spending_2022.xlsx", sheet = 17, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "17",
+         total = total * 1000000)
+
+spending_CCAA_objects <- mget(ls(pattern = "^CCAA"))
+spending_CCAA <- do.call(rbind, spending_CCAA_objects)
 ```
+
+Reading CCAA 2022 population data to calculate spending per inhabitant
+Data from:
+https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html
+
+```{r}
+pop_CCAA <- 
+  read_excel("Data/pop_CCAA_2022.xlsx", skip = 4) |> 
+  filter(...1 != "ESPAÑA",
+         str_detect(substr(...1, 1, 2), "^[A-Z]+$")) |> 
+  mutate(CODAUTO = row_number()) |> 
+  select(...1, CODAUTO, "2022") |> 
+  rename(pop_2022 = "2022") |> 
+  mutate(CODAUTO = as.character(ifelse(nchar(CODAUTO) == 1, paste0("0", CODAUTO), CODAUTO)))
+```
+
+Merging spending data and population data
+
+```{r}
+spending_CCAA_final <- 
+  spending_CCAA |> 
+  left_join(pop_CCAA, by = "CODAUTO") |> 
+  mutate(per_capita_CCAA = total/pop_2022) |> 
+  rename(total_CCAA = total) |> 
+  select(CODAUTO, per_capita_CCAA, total_CCAA)
+```
+
 
 ## Contracts
 
@@ -246,19 +428,18 @@ Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
 
 Manually changed data type to xlsx because csv did not work
 
-Idea: Adding contracts and those who register as unemployed to calculate labor force - then calculate unemployement rate
-
-
+- creating new jobs / new employment 
 
 ```{r}
-contratos <- 
-  read_xlsx("Data/Contratos_por_municipios_2023.xlsx", skip = 1) |> 
+contracts <- read_xlsx("Data/Contratos_por_municipios_2023.xlsx", skip = 1) |> 
   select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
   rename(INE = "Codigo Municipio",
          NOMBRE = Municipio,
          Contratos_total = "Total Contratos") |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
-  mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total)))
+  mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total))) |> 
+  group_by(INE) |> 
+  summarise(contracts_mean_2023 = mean(Contratos_total))
 ```
 
 ## Distance From Provincial Capital
@@ -268,25 +449,17 @@ Adding distance from provincial capital for proxy for inter-municipal mobility
 Code provided by Villamil
 
 ```{r}
-source(distcap)
+source("distcap.R")
 ```
 
 Changing data type of and adding a 0 in front of every INE code that only has 4 characters to standardize and render the code applicable.
 
 ```{r}
-distcap <- 
-  distcap |> 
+dist_cap <- 
+  dist_cap |> 
   mutate(muni_code = as.character(muni_code)) |> 
   mutate(muni_code = ifelse(nchar(muni_code) == 4, paste0("0", muni_code), muni_code)) |> 
   rename(INE = muni_code)
-```
-
-Merging tables
-
-```{r}
-df_spen_imp_mun_tidy <- 
-  df_spen_imp_mun_tidy |> 
-  left_join(distcap, by = c("INE" = "INE"))
 ```
 
 ## Population statistic
@@ -308,13 +481,14 @@ population <-
   filter(municipio != "1 de enero de 2022") |>
   mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
-  select(INE, NOMBRE, "Todas las edades...2", "Menos de 16 años...3", "De 16 a 64 años...4", "65 y más años...5", "Todas las edades...10") |> 
+  select(INE, "Todas las edades...2", "Menos de 16 años...3", "De 16 a 64 años...4", "65 y más años...5", "Todas las edades...10") |> 
   rename("pop_total" = "Todas las edades...2",
         "pop_below_16" = "Menos de 16 años...3",
         "pop_16_64" = "De 16 a 64 años...4",
         "pop_above_65" = "65 y más años...5",
         "pop_foreigners" = "Todas las edades...10") |> 
-  mutate(pop_share_foreigners = (pop_foreigners/pop_total)*100)
+  mutate(pop_share_foreigners = (pop_foreigners/pop_total)*100,
+         pop_share_wk_age = (pop_16_64/pop_total)*100)
 
 # the population table stores values for Men and Women in rows rather than columns
 # grouping by municipality and only choosing highest total population
@@ -334,20 +508,64 @@ population_national <-
   rename(CODAUTO = INE) |> 
   select(-NOMBRE)
 ```
+Creating data frame only with municipalities
+
+Adding dummy variable greater than 20,000
 
 ```{r}
 population <- 
   population |> 
   filter(INE != "Total") |> 
-  drop_na()
+  drop_na() |> 
+  mutate(greater_20k = as.character(if_else(pop_total > 20000, 1, 0)))
 ```
 
 ### Average age
 
-```{r}
-read_excel("Data/avg_age_2022.xlsx")
-```
+- ready made data only available for 2021
 
+```{r}
+avg_age_raw <- 
+  read_excel("Data/avg_age_2022.xlsx", skip = 6)
+
+avg_age_clean <- 
+  avg_age_raw |>
+  select(-"Todas las edades") |> 
+  rename(municipio = ...1) |> 
+  rename_with(~ if_else(. == "municipio", ., gsub("\\D", "", .)), everything()) |> 
+  filter(municipio == "1 de enero de 2022" | lead(municipio) == "1 de enero de 2022") |> 
+  mutate(across(.cols = -municipio, .fns = lead)) |> 
+  slice(-n()) |> 
+  filter(municipio != "1 de enero de 2022" & municipio != "Total Nacional") |> 
+  group_by(municipio) |> 
+  slice(1) |> 
+  ungroup()
+
+weighted_sum_age <-
+  avg_age_clean |>
+  pivot_longer(cols = 2:102, names_to = "age") |> 
+  mutate(age = as.numeric(age)) |> 
+  mutate(weighted_age = age * value) |> 
+  group_by(municipio) |> 
+  summarize(weighted_sum = sum(weighted_age)) |> 
+  ungroup()
+
+
+total_n_people <-
+  avg_age_clean |>
+  pivot_longer(cols = 2:102, names_to = "age") |> 
+  group_by(municipio) |> 
+  summarize(total_people = sum(value)) |> 
+  ungroup()
+
+avg_age_final <- 
+  weighted_sum_age |> 
+  inner_join(total_n_people, by = "municipio") |> 
+  mutate(average_age = weighted_sum / total_people) |> 
+  mutate(MUNICIPIO = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  select(INE, average_age)
+```
 
 ## Number of firms
 
@@ -356,7 +574,7 @@ read_excel("Data/avg_age_2022.xlsx")
 Warning message because of notation in original table of 0 as ".".
 
 ```{r}
-n_companías <- 
+n_firms <- 
   read_excel("Data/n_firms_total.xlsx", skip = 7, col_names = TRUE) |> 
   rename(municipio = ...1,
          n_companías = "2022") |>
@@ -364,7 +582,9 @@ n_companías <-
   mutate(n_companías = as.numeric(n_companías),
          municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
-  mutate(n_companías = ifelse(is.na(n_companías), 0, n_companías))
+  mutate(n_companías = ifelse(is.na(n_companías), 0, n_companías)) |> 
+  rename(n_firms = n_companías) |> 
+  select(-NOMBRE)
 ```
 
 ## Unemployment
@@ -458,3 +678,157 @@ unemployment <-
   select(INE, ue_pct)
 ```
 
+## Income
+
+choosing median income by consumption unit
+
+--> there are some NA values
+
+```{r}
+median_income <- 
+  read_excel("Data/income_2021.xlsx", skip = 7) |> 
+  select(...1, "2021...23") |> 
+  rename(municipio = ...1,
+         median_inc_con_unit = "2021...23") |> 
+  mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  filter(nchar(INE) == 5) |> 
+  mutate(median_inc_con_unit = as.numeric(median_inc_con_unit)) |> 
+  select(-NOMBRE)
+```
+
+## Political leadership 
+
+### Municipality - Party of mayor
+
+```{r}
+political_leadership_mun <- 
+  read_excel("Data/Alcaldes_Mandato_2019_2023.xlsx", skip = 6) |> 
+  rename(INE = "CÓDIGO INE",
+         party_mun = LISTA,
+         resignation_date = "FECHA BAJA") |> 
+  mutate(INE = substr(INE, 1, nchar(INE) - 1)) |> 
+  select(MUNICIPIO, INE, party_mun, "NOMBRE",resignation_date) |> 
+  group_by(INE) |> 
+  filter(if(all(is.na(resignation_date))) TRUE else if(any(!is.na(resignation_date) & resignation_date < as.Date("2022-01-01"))) row_number() == max(which(resignation_date < as.Date("2022-01-01"))) + 1 else row_number() == 1) |> # if resignation is NA then keep the row, else if the row is not NA and the resignation date is before 2022-01-01 it chooses the row number where the resignation date is closest below 2022-01-01 and selects the row +1. This effectively chooses the row of the mayor who assumed his position before 2022-01-01. If the resignation date is not before 2022-01-01 then the first row is chosen.
+  select(INE, party_mun)
+```
+
+### CCAA
+From:
+https://es.wikipedia.org/wiki/Anexo:Presidencias_auton%C3%B3micas_espa%C3%B1olas
+
+Code from
+https://www.ine.es/daco/daco42/codmun/cod_ccaa.htm
+
+Using datapasta
+
+```{r}
+
+code_CCAA <-
+  tibble::tribble(
+  ~Código,                      ~Literal,
+     "01",                   "Andalucía",
+     "02",                      "Aragón",
+     "03",     "Asturias, Principado de",
+     "04",              "Balears, Illes",
+     "05",                    "Canarias",
+     "06",                   "Cantabria",
+     "07",             "Castilla y León",
+     "08",        "Castilla - La Mancha",
+     "09",                    "Cataluña",
+     "10",        "Comunitat Valenciana",
+     "11",                 "Extremadura",
+     "12",                     "Galicia",
+     "13",        "Madrid, Comunidad de",
+     "14",           "Murcia, Región de",
+     "15", "Navarra, Comunidad Foral de",
+     "16",                  "País Vasco",
+     "17",                   "Rioja, La",
+     "18",                       "Ceuta",
+     "19",                     "Melilla"
+  )
+
+
+
+political_leadership_CCAA <- 
+  tibble::tribble(
+   ~CCAA,                ~President,     ~Start,      ~End,  ~Duration,  ~Party,
+  "Andalucía",            "Juan Manuel Moreno",      "18 de enero de 2019",              "en el cargo",   "5 años y 94 días",   "PP",
+  "Aragón",                 "Javier Lambán",       "5 de enero de 2015",     "10 de agosto de 2023",  "8 años y 217 días", "PSOE",
+  "Asturias, Principado de",             "Adrián Barbón",  "20 de julio de 2019",          "en el cargo",  "4 años y 276 días", "PSOE",
+  "Balears, Illes", "Francina Armengol",   "2 de julio de 2015", "19 de junio de 2023", "7 años y 352 días", "PSOE",
+  "Canarias", "Ángel Víctor Torres", "16 de julio de 2019",  "14 de julio de 2023", "3 años y 363 días", "PSOE",
+  "Cantabria", "Miguel Ángel Revilla (2º)",   "7 de julio de 2015",  "5 de julio de 2023", "7 años y 363 días", "PRC",
+  "Castilla - La Mancha", "Emiliano García-Page", "4 de julio de 2015", "en el cargo", "8 años y 292 días", "PSOE",
+  "Castilla y León", "Alfonso Fernández Mañueco",  "12 de julio de 2019",          "en el cargo",   "4 años y 284 días", "PP",
+  "Cataluña", "Pere Aragonès", "30 de septiembre de 2020",               "en el cargo",  "3 años y 204 días",  "ERC",
+  "Ceuta", "Juan.Jesús.Vivas", "6.de.febrero.de.2001",         "en.el.cargo", "23.años.y.106.días",    "PP",
+  "Comunitat.Valenciana",     "Ximo.Puig", "28.de.junio.de.2015", "13.de.julio.de.2023", "8.años.y.15.días", "PSOE",
+  "Extremadura", "Guillermo Fernández Vara (2º)",  "7 de julio de 2015",  "14 de julio de 2023",    "8 años y 7 días", "PSOE",
+  "Galicia", "Alfonso Rueda Valenzuela",   "14 de mayo de 2022",         "en el cargo",   "1 año y 343 días", "PP",
+  "Rioja, La",         "Concha Andreu", "27 de agosto de 2019",   "30 de junio de 2023", "3 años y 307 días", "PSOE",
+  "Madrid, Comunidad.de",  "Isabel.Díaz.Ayuso", "19.de.agosto.de.2019",         "en.el.cargo", "4.años.y.251.días",  "PP",
+  "Melilla",	"Eduardo.de.Castro", "15.de.junio.de.2019",	"7.de.julio.de.2023",	"4.años.y.22.días", "Cs",
+   "Murcia, Región de", "Fernando López Miras", "3 de mayo de 2017", "en el cargo", "6 años y 354 días", "PP",
+  "Navarra, Comunidad Foral de", "María Chivite",  "6 de agosto de 2019",          "en el cargo", "4 años y 259 días", "PSOE",
+  "País Vasco", "Iñigo Urkullu", "15 de diciembre de 2012",              "en el cargo", "11 años y 128 días", "PNV"
+  )
+
+political_leadership_CCAA <- 
+  political_leadership_CCAA |> 
+  mutate(across(c(CCAA, President, Start, End, Duration, Party), ~gsub("\\.", " ", .))) |> left_join(code_CCAA, by = c("CCAA" = "Literal")) |> 
+  select(CCAA, Party, Código) |> 
+  rename(party_ccaa = Party,
+         CODAUTO = Código)
+```
+
+
+
+## List of useful dataframes
+
+```{r}
+objects <- ls()
+object_to_keep <- c("df_spen_imp_mun_tidy", 
+                    "unemployment", 
+                    "population", 
+                    "n_firms", 
+                    "dist_cap",
+                    "avg_age_final",
+                    "contracts",
+                    "political_leadership_CCAA",
+                    "political_leadership_mun",
+                    "spending_CCAA_final",
+                    "median_income")
+objects_to_remove <- setdiff(objects, object_to_keep)
+rm(list = objects_to_remove)
+```
+
+### Deleting remaining objects
+
+```{r}
+objects <- ls()
+object_to_keep <- "df_spen_imp_mun_tidy"
+objects_to_remove <- objects[objects != object_to_keep]
+rm(list = objects_to_remove)
+```
+
+### Merging tables
+
+```{r}
+df <- 
+  df_spen_imp_mun_tidy |> 
+  left_join(dist_cap, by =  "INE") |> 
+  left_join(unemployment, by = "INE") |> 
+  left_join(population, by = "INE") |> 
+  left_join(n_firms, by = "INE") |> 
+  left_join(avg_age_final, by = "INE") |> 
+  left_join(contracts, by = "INE") |> 
+  left_join(political_leadership_mun, by = "INE") |> 
+  left_join(median_income, by = "INE") |> 
+  left_join(political_leadership_CCAA, by = "CODAUTO") |> 
+  left_join(spending_CCAA_final, by = "CODAUTO") |> 
+  mutate(per_capita_MUN = total_MUN/pop_total)
+```
+
+### Municipal spending per capita
