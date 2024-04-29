@@ -5,6 +5,10 @@ format: html
 editor: visual
 ---
 
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
 ## Library
 
 ```{r setup, include=FALSE}
@@ -505,8 +509,7 @@ population_national <-
   population |>
   filter(INE == "Total") |> 
   mutate(INE = "00") |> 
-  rename(CODAUTO = INE) |> 
-  select(-NOMBRE)
+  rename(CODAUTO = INE)
 ```
 Creating data frame only with municipalities
 
@@ -804,16 +807,9 @@ objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
 
-### Deleting remaining objects
-
-```{r}
-objects <- ls()
-object_to_keep <- "df_spen_imp_mun_tidy"
-objects_to_remove <- objects[objects != object_to_keep]
-rm(list = objects_to_remove)
-```
-
 ### Merging tables
+
+- also adding per capita spending municipality
 
 ```{r}
 df <- 
@@ -831,4 +827,20 @@ df <-
   mutate(per_capita_MUN = total_MUN/pop_total)
 ```
 
-### Municipal spending per capita
+
+```{r}
+df_final <- 
+  df |> 
+  relocate(party_mun, .after = NOMBRE) |> 
+  relocate(c(CCAA, party_ccaa), .after = CODAUTO) |> 
+  relocate(per_capita_MUN, .after = total_MUN) |> 
+  relocate(greater_20k, .after = pop_total) |> 
+  relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN)
+```
+
+Saving data frame
+
+```{r}
+write.csv(df_final, paste("Data/TFM_data", Sys.Date(), ".csv", sep = "_"))
+```
+
