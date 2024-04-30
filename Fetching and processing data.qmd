@@ -153,7 +153,8 @@ tb_partedeImporte <-
   tb_importePorPrograma |> 
   group_by(INE) |>
   mutate(share_spending = (total_spending/total_importe)*100) |> 
-  ungroup()
+  ungroup() |> 
+  mutate(nombre = trimws(nombre))
 
 # verifying that each funds destination is only listed once now per municipality
 verification2 <-
@@ -811,7 +812,8 @@ rm(list = objects_to_remove)
 
 - also adding per capita spending municipality
 
-```{r}
+```{r} 
+
 df <- 
   df_spen_imp_mun_tidy |> 
   left_join(dist_cap, by =  "INE") |> 
@@ -824,7 +826,8 @@ df <-
   left_join(median_income, by = "INE") |> 
   left_join(political_leadership_CCAA, by = "CODAUTO") |> 
   left_join(spending_CCAA_final, by = "CODAUTO") |> 
-  mutate(per_capita_MUN = total_MUN/pop_total)
+  mutate(per_capita_MUN = total_MUN/pop_total,
+         pop_density = pop_total/ area_sqkm)
 ```
 
 
@@ -835,7 +838,31 @@ df_final <-
   relocate(c(CCAA, party_ccaa), .after = CODAUTO) |> 
   relocate(per_capita_MUN, .after = total_MUN) |> 
   relocate(greater_20k, .after = pop_total) |> 
-  relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN)
+  relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN) |> 
+  rename(employment_promotion = "Fomento del Empleo",
+         general_services = "Servicios de carácter general",
+         pub_safety_mobility = "Seguridad y movilidad ciudadana",
+         housing_urban_plan = "Vivienda y urbanismo",
+         community_wellbeing = "Bienestar comunitario",
+         environment = "Medio ambiente",
+         cultura = "Cultura",
+         tax_fin_admin = "Administración financiera y tributaria",
+         public_debt = "Deuda Pública",
+         health = "Sanidad",
+         education = "Educación",
+         infrastructure = "Infraestructuras",
+         employee_benefits = "Otras prestaciones económicas a favor de empleados",
+         social_services = "Servicios Sociales y promoción social",
+         business_turism_sme = "Comercio, turismo y pequeñas y medianas empresas",
+         economic_expen_other = "Comercio, turismo y pequeñas y medianas empresas",
+         gov_bodies = "Órganos de gobierno",
+         sports = "Deporte",
+         industry_eng = "Industria y energía",
+         pub_transportation = "Transporte público",
+         r_and_d = "Investigación, desarrollo e innovación",
+         trans_public_agencies = "Transferencias a otras Administraciones Públicas",
+         agr_farm_fish = "Agricultura, Ganadería y Pesca",
+         pensions = "Pensiones")
 ```
 
 Saving data frame
@@ -843,4 +870,3 @@ Saving data frame
 ```{r}
 write.csv(df_final, paste("Data/TFM_data", Sys.Date(), ".csv", sep = "_"))
 ```
-
