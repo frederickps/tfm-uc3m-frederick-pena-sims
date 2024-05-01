@@ -8,8 +8,6 @@ if (length(setdiff(pkg, rownames(installed.packages()))) > 0) {
 # Load
 invisible(lapply(pkg, library, character.only = TRUE))
 
-
-
 ## DATA ------------------------------------
 
 # Load capitales provincia
@@ -20,6 +18,12 @@ caps = read.csv("Data/provcapitals.csv") %>%
 
 
 shp <- st_read("Data/spatial/recintos_municipales_inspire_peninbal_etrs89.shp")
+
+shp_1 <- st_read("Data/spatial/recintos_municipales_inspire_canarias_regcan95.shp")
+
+shp_1 <- st_transform(shp_1, st_crs(shp))
+
+shp <- rbind(shp, shp_1)
 
 # Variable names
 shp$INE <- str_sub(shp$NATCODE, start = -5)

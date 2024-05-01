@@ -462,9 +462,8 @@ Changing data type of and adding a 0 in front of every INE code that only has 4 
 ```{r}
 dist_cap <- 
   dist_cap |> 
-  mutate(muni_code = as.character(muni_code)) |> 
-  mutate(muni_code = ifelse(nchar(muni_code) == 4, paste0("0", muni_code), muni_code)) |> 
-  rename(INE = muni_code)
+  mutate(INE = as.character(INE)) |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE))
 ```
 
 ## Population statistic
@@ -653,6 +652,7 @@ social_security <-
   group_by(INE) |> 
   summarise(mean_ss = mean(TOTAL_SS, rm.na = T)) |> 
   ungroup()
+
 ```
 
 Merging with unemployment table
@@ -813,7 +813,6 @@ rm(list = objects_to_remove)
 - also adding per capita spending municipality
 
 ```{r} 
-
 df <- 
   df_spen_imp_mun_tidy |> 
   left_join(dist_cap, by =  "INE") |> 
@@ -827,7 +826,9 @@ df <-
   left_join(political_leadership_CCAA, by = "CODAUTO") |> 
   left_join(spending_CCAA_final, by = "CODAUTO") |> 
   mutate(per_capita_MUN = total_MUN/pop_total,
-         pop_density = pop_total/ area_sqkm)
+         pop_density = pop_total/ area_sqkm,
+         per_capita_contracts = contracts_mean_2023/pop_total,
+         n_firms = as.numeric(n_firms))
 ```
 
 
@@ -862,7 +863,13 @@ df_final <-
          r_and_d = "Investigación, desarrollo e innovación",
          trans_public_agencies = "Transferencias a otras Administraciones Públicas",
          agr_farm_fish = "Agricultura, Ganadería y Pesca",
-         pensions = "Pensiones")
+         pensions = "Pensiones") |> 
+  mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
+  mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_MUN))
+
+df_final <- 
+  df_final |> 
+  filter(!is.na(ue_pct))
 ```
 
 Saving data frame
