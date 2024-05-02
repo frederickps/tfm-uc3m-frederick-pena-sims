@@ -1,0 +1,135 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Analysis
+
+### Library
+
+```{r}
+options(scipen = 999)
+library(tidyverse)
+library(readxl)
+library(rDEA)
+library(deaR)
+```
+
+### Load data (if needed)
+
+```{r}
+df_final <- read.csv("Data/TFM_data_2024-05-01_.csv") |> 
+  select(-X)
+```
+
+### Data Envelopment Analysis
+
+Ideas: 
+
+Unemployment as outcome
+Contracts as outcome (contracts per capita)
+
+-	variables for DEA:
+  - n_firms
+  - per capita CCAA spending
+  - per capita mun spending
+  - distance
+  - unemployment rate
+  
+- variables for prediction task
+  - how money was spent
+  - population (absolute number)
+  - pop share foreigners
+  - pop share working age
+  - average age
+  - median income per household unit (?)
+  - contracts mean 2023
+  - greater 20k
+  - pop density
+  
+  
+More idea
+- contracts divided by area (contracts database)
+
+----------------------------------
+
+In the context of Data Envelopment Analysis (DEA) and efficiency estimation, censoring refers to the phenomenon where efficiency scores are bounded or capped at a certain value. This means that despite variations in input-output combinations among decision-making units (DMUs), a substantial number of DMUs are assigned the maximum efficiency score (often 1) by the DEA model.
+
+When efficiency scores are "censored," it implies that the DEA model is unable to distinguish between highly efficient DMUs, resulting in a clustering of efficiency scores at the upper bound (e.g., 1). This can occur due to various factors such as data limitations, measurement errors, model assumptions, or the inherent characteristics of the production process being analyzed.
+
+-----------------------------------
+
+Taking the inverse of unemployment because output oriented DEA defines higher values as better
+
+Using per capita spending on CCAA level and distance from provincial capital as environmental variables
+
+Variable Returns to Scale (RTS = "Variable"): This assumption allows for flexibility in the relationship between inputs and outputs. It recognizes that the impact of municipal spending on reducing unemployment may vary across municipalities due to factors such as local economic conditions, labor market dynamics, and policy effectiveness.
+
+## rDEA package
+
+```{r}
+X <- df_final[c("n_firms", "per_capita_MUN")]
+
+epsilon <- 1e-6  # Defining a small positive constant for smoothing
+Y <- df_final[c("ue_pct")]
+Y <- 
+  Y |> 
+  mutate(ue_pct = (1 / (ue_pct + epsilon)) * 100)
+
+Z <- df_final[c("per_capita_CCAA", "dist_prov_cap")]
+
+dea_robust <- 
+  dea.env.robust(X, Y, W=NULL, Z, model="output", RTS="variable",
+                L1=10, L2=100, alpha=0.05)
+```
+
+```{r}
+X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap")]
+epsilon <- 1e-6  # Defining a small positive constant for smoothing
+Y <- df_final[c("ue_pct")]
+Y <- 
+  Y |> 
+  mutate(ue_pct = (1 / (ue_pct + epsilon)) * 100)
+
+dea.robust(X=X, Y=Y, model="input", RTS="variable", B, alpha=0.05, bw="cv")
+
+dea_naive <- dea(XREF=X, YREF=Y, X=X, Y=Y,model="output", RTS="variable")
+```
+
+## deaR package
+
+```{r}
+df_dea <- df_final[c("INE","n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap", "ue_pct")]
+
+data_example <- make_deadata(
+  datadea = df_dea, 
+  ni = 4,            
+  no = 1,           
+  dmus = 1)
+
+dea_bootstrap <- bootstrap_basic(data_example,
+                orientation = "oo",
+                rts = "vrs",
+                L = 1,
+                U = 1,
+                B = 2000,
+                h = NULL,
+                alpha = 0.05)
+
+result$score_bc
+result$CI
+```
+
+
+
+### Next steps
+distribution
+
+t-test between city sizes
+
+
