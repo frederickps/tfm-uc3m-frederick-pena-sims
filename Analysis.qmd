@@ -4,8 +4,8 @@ format: html
 editor: visual
 ---
 
-```{r setup, include=FALSE} 
-knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ## Analysis
@@ -17,52 +17,57 @@ options(scipen = 999)
 library(tidyverse)
 library(readxl)
 library(rDEA)
-library(deaR)
+library(caret)
+library(mice)
+library(xgboost)
 ```
 
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data/TFM_data_2024-05-01_.csv") |> 
+df_final <- read.csv("Data/TFM_data_2024-05-13_.csv", colClasses = c(INE = "character")) |> 
   select(-X)
 ```
 
 ### Data Envelopment Analysis
 
-Ideas: 
+Ideas:
 
-Unemployment as outcome
-Contracts as outcome (contracts per capita)
+Unemployment as outcome Contracts as outcome (contracts per capita)
 
--	variables for DEA:
-  - n_firms
-  - per capita CCAA spending
-  - per capita mun spending
-  - distance
-  - unemployment rate
-  
-- variables for prediction task
-  - how money was spent
-  - population (absolute number)
-  - pop share foreigners
-  - pop share working age
-  - average age
-  - median income per household unit (?)
-  - contracts mean 2023
-  - greater 20k
-  - pop density
-  
-  
-More idea
-- contracts divided by area (contracts database)
+-   variables for DEA:
 
-----------------------------------
+-   n_firms
+
+-   per capita CCAA spending
+
+-   per capita mun spending
+
+-   distance
+
+-   unemployment rate
+
+-   variables for prediction task
+
+    -   how money was spent
+    -   population (absolute number)
+    -   pop share foreigners
+    -   pop share working age
+    -   average age
+    -   median income per household unit (?)
+    -   contracts mean 2023
+    -   greater 20k
+    -   pop density
+
+More idea - contracts divided by area (contracts database)
+
+------------------------------------------------------------------------
 
 In the context of Data Envelopment Analysis (DEA) and efficiency estimation, censoring refers to the phenomenon where efficiency scores are bounded or capped at a certain value. This means that despite variations in input-output combinations among decision-making units (DMUs), a substantial number of DMUs are assigned the maximum efficiency score (often 1) by the DEA model.
 
 When efficiency scores are "censored," it implies that the DEA model is unable to distinguish between highly efficient DMUs, resulting in a clustering of efficiency scores at the upper bound (e.g., 1). This can occur due to various factors such as data limitations, measurement errors, model assumptions, or the inherent characteristics of the production process being analyzed.
 
------------------------------------
+------------------------------------------------------------------------
 
 Taking the inverse of unemployment because output oriented DEA defines higher values as better
 
@@ -72,64 +77,315 @@ Variable Returns to Scale (RTS = "Variable"): This assumption allows for flexibi
 
 ## rDEA package
 
+### Robust
 ```{r}
 X <- df_final[c("n_firms", "per_capita_MUN")]
 
-epsilon <- 1e-6  # Defining a small positive constant for smoothing
-Y <- df_final[c("ue_pct")]
+epsilon <- 0.000000001  # Defining a small positive constant for smoothing
+Y <- df_final[c("ue_pct_2023")]
 Y <- 
   Y |> 
-  mutate(ue_pct = (1 / (ue_pct + epsilon)) * 100)
+  mutate(ue_pct_2023 = (100 - ue_pct_2023) + epsilon)
 
-Z <- df_final[c("per_capita_CCAA", "dist_prov_cap")]
+Z <- df_final[c("dist_prov_cap")]
 
 dea_robust <- 
   dea.env.robust(X, Y, W=NULL, Z, model="output", RTS="variable",
                 L1=10, L2=100, alpha=0.05)
 ```
+Calculating the efficiency score
 
+```{r}
+sorted_scores <- sort(dea_robust$delta_hat_hat, decreasing = TRUE)
+best_score <- max(sorted_scores)
+relative_efficiency <- dea_robust$delta_hat_hat / best_score
+
+test <- 
+  df_final |> 
+  mutate(dea_robust = dea_robust$delta_hat_hat) 
+
+test |> 
+  ggplot() +
+  geom_histogram(aes(log(dea_robust)+1))
+```
+
+
+```{r}
+test <- 
+  test |> 
+  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, ue_pct_2023))
+```
+
+
+#### Imputation
+
+```{r}
+m <- 5
+set.seed(475)
+imp <- mice(test, m = m, method= "rf")
+test <- complete(imp, action=m)
+
+test <- 
+  test |> 
+  filter(!is.na(party_mun))
+```
+
+
+#### Training and testing
+
+```{r}
+set.seed(123)  
+training.samples <-
+  test$dea_robust |> 
+  createDataPartition(p = 0.8, list = FALSE)
+
+training  <- test[training.samples, ]
+testing <- test[-training.samples, ] 
+```
+
+
+#### Random forrest
+
+```{r}
+set.seed(3456)
+rf_fit <- train(log(dea_robust)+1 ~., 
+                 data = training,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(6,7,8,9)),
+                 importance = TRUE)
+
+rf_fit
+
+any(is.na(training))
+```
+
+
+### Naive
 ```{r}
 X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap")]
 epsilon <- 1e-6  # Defining a small positive constant for smoothing
-Y <- df_final[c("ue_pct")]
+
+Y <- df_final[c("ue_pct_2023")]
 Y <- 
   Y |> 
-  mutate(ue_pct = (1 / (ue_pct + epsilon)) * 100)
+  mutate(ue_pct_2023 = (100 - ue_pct_2023) + epsilon)
 
-dea.robust(X=X, Y=Y, model="input", RTS="variable", B, alpha=0.05, bw="cv")
-
-dea_naive <- dea(XREF=X, YREF=Y, X=X, Y=Y,model="output", RTS="variable")
+dea_naive <- 
+  dea(XREF=X, YREF=Y, X=X, Y=Y,model="output", RTS="variable")
 ```
 
-## deaR package
+Data frame
 
 ```{r}
-df_dea <- df_final[c("INE","n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap", "ue_pct")]
+df_dea <- 
+  df_final |> 
+  mutate(dea_naive = dea_naive$thetaOpt) 
+```
 
-data_example <- make_deadata(
-  datadea = df_dea, 
-  ni = 4,            
-  no = 1,           
-  dmus = 1)
+### Descriptive analysis of results
 
-dea_bootstrap <- bootstrap_basic(data_example,
-                orientation = "oo",
-                rts = "vrs",
-                L = 1,
-                U = 1,
-                B = 2000,
-                h = NULL,
-                alpha = 0.05)
+#### Distribution
 
-result$score_bc
-result$CI
+```{r}
+df_dea |> 
+  ggplot()+
+  geom_histogram(aes(dea_naive))
+```
+
+#### Most efficient municipalities
+
+```{r}
+df_dea |> 
+  filter(dea_naive == 1) |> 
+  count()
+```
+
+```{r}
+df_efficient <- 
+  df_dea |> 
+  filter(dea_naive == 1)
+  
+df_efficient |> 
+  count(CCAA)
+
+df_efficient |> 
+  count(greater_20k)
+```
+
+#### Mean efficiency score
+
+```{r}
+mean(df_dea$dea_naive)
+```
+8476198
+
+#### t-test between city sizes
+
+```{r}
+greater_20k <- df_dea[df_dea$greater_20k == 1, "dea_naive"]
+smaller_20k <- df_dea[df_dea$greater_20k == 0, "dea_naive"]
+
+# Perform the t-test
+t_test_result <- t.test(greater_20k, smaller_20k)
+t_test_result
+```
+The mean DEA efficiency score for observations where "greater_20k" is 1 is 0.8735019, while the mean DEA efficiency score for observations where "greater_20k" is 0 is 0.8460489.
+
+
+```{r}
+greater_100k <- df_dea[df_dea$pop_total > 100000, "dea_naive"]
+smaller_100k <- df_dea[df_dea$pop_total <= 100000, "dea_naive"]
+
+# Perform the t-test
+t_test_result <- t.test(greater_100k, smaller_100k)
+t_test_result
+```
+## Building the model
+
+### Variable selection
+
+All variables without additional meaning and variables used in estimating efficiency score
+
+```{r}
+df_model <- 
+  df_dea |> 
+  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, ue_pct_2023))
+```
+
+### Data imputation
+
+```{r}
+m <- 5
+set.seed(475)
+imp <- mice(df_model, m = m, method= "rf")
+df_model_imp <- complete(imp, action=m)
+
+df_model_imp <- 
+  df_model_imp |> 
+  filter(!is.na(party_mun))
+```
+
+### Correlation
+
+```{r}
+df_corr <-
+  df_model_imp |> 
+  dplyr::select(-dea_naive) |>
+  select_if(is.numeric)
+
+corr<- cor(df_model_imp$dea_naive, df_corr)
+corr<-round(corr,4)
+
+df_corr_results <- 
+  data.frame(corr) |> 
+  pivot_longer(values_to = "correlation",
+               cols = 1:37,
+               names_to = "variable")
+
+ggplot(df_corr_results, aes(x = variable, y = correlation)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Correlation with DEA efficiency score", x = "Variable", y = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
+```
+
+### Feature engineering
+
+```{r}
+ggplot(df_model_imp)+
+  geom_point(aes(x = employment_promotion, y = dea_naive))
 ```
 
 
+### Lasso regression
 
-### Next steps
-distribution
+```{r}
+# Define the control parameters for LASSO regression
+ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
 
-t-test between city sizes
+# Train the LASSO model
+set.seed(123)
+lasso_model <- train(dea_naive ~ .,
+                     data = df_model_imp,
+                     method = "glmnet",
+                     trControl = ctrl,
+                     tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)))
 
+lasso_coef <- coef(lasso_model$finalModel, s = lasso_model$finalModel$lambdaOpt)
+
+non_zero_vars <- rownames(lasso_coef)[lasso_coef[,1]!=0]
+
+non_zero_vars <- non_zero_vars[-1] 
+
+non_zero_vars
+```
+
+```{r}
+non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")]
+
+
+df_model_final <- 
+  df_model_imp |> 
+  dplyr::select(all_of(non_zero_vars), party_mun, party_ccaa, dea_naive)
+```
+
+### Modelling
+
+#### Training and testing
+
+```{r}
+set.seed(123)  
+training.samples <-
+  df_model_final$dea_naive |> 
+  createDataPartition(p = 0.8, list = FALSE)
+
+train.data  <- df_model_final[training.samples, ]
+test.data <- df_model_final[-training.samples, ] 
+```
+
+#### Random forest 
+
+```{r}
+set.seed(3456)
+rf_tune <- train(dea_naive ~., 
+                 data = train.data,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(6,7,8,9)),
+                 importance = TRUE)
+
+rf_tune$finalModel$importance
+```
+
+```{r}
+plot(rf_tune)
+```
+
+#### Gradiant boosting
+
+```{r}
+set.seed(123)
+xgb_tune <- train(dea_naive ~., 
+                  data = train.data,
+                  method = "xgbTree",
+                  preProc=c('scale','center'),
+                  objective = "reg:squarederror",
+                  trControl = ctrl,
+                  tuneGrid = expand.grid(nrounds = c(700, 800, 900, 1000, 1500), 
+                                         max_depth = c(7, 8), 
+                                         eta = c(0.1),
+                                         gamma = c(0.1, 0.3, 0.5, 0.7, 0.9, 1),
+                                         colsample_bytree = c(0.2, 0.3, 0.4, 0.5),
+                                         min_child_weight = c(1),
+                                         subsample = c(0.8)))
+
+xgb_tune
+
+plot(xgb_tune)
+```
 

@@ -424,7 +424,7 @@ spending_CCAA_final <-
   select(CODAUTO, per_capita_CCAA, total_CCAA)
 ```
 
-## Contracts (2023 - change back if necessary)
+## Contracts
 
 Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
 
@@ -434,7 +434,7 @@ Manually changed data type to xlsx because csv did not work
 
 ```{r}
 contracts <- 
-  read_xlsx("Data/Contratos_por_municipios_2023.xlsx", skip = 1) |> 
+  read_xlsx("Data/Contratos_por_municipios_2022.xlsx", skip = 1) |> 
   select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
   rename(INE = "Codigo Municipio",
          NOMBRE = Municipio,
@@ -442,7 +442,7 @@ contracts <-
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
   mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total))) |> 
   group_by(INE) |> 
-  summarise(contracts_mean_2023 = mean(Contratos_total))
+  summarise(contracts_mean_2022 = mean(Contratos_total))
 ```
 
 ## Distance From Provincial Capital
@@ -526,7 +526,7 @@ population <-
 
 -   ready made data only available for 2021
 
-```{r}
+```{r, eval=FALSE}
 avg_age_raw <- 
   read_excel("Data/avg_age_2022.xlsx", skip = 6)
 
@@ -568,6 +568,15 @@ avg_age_final <-
   separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
   select(INE, average_age)
 ```
+```{r, eval=FALSE}
+write.csv(avg_age_final, "Data/avg_age_final.csv")
+```
+
+```{r}
+avg_age_final <- read.csv("Data/avg_age_final.csv", colClasses = c(INE = "character")) |> 
+  select (-X)
+```
+
 
 ## Number of firms
 
@@ -589,9 +598,9 @@ n_firms <-
   select(-NOMBRE)
 ```
 
-## Unemployment rate
+## Target - Unemployment rate (2023)
 
-2022 data for unemployment
+2023 data for unemployment
 
 Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
 
@@ -600,7 +609,99 @@ Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasP
 Unemployment = Paro / Paro + Social Security
 
 ```{r}
-unemployment <- 
+unemployment_2023 <- 
+  read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+Social Security data for active population
+
+Reading data
+
+```{r}
+# Setting the directory path where csv files are located
+folder_path <- "Data/SS_2023"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (file in excel_files) {
+
+  data <- read_excel(file, skip = 1)
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+# Combine all data frames into a single object
+social_security_2023 <- bind_rows(all_data)
+```
+
+Wrangling data
+
+```{r}
+social_security_2023 <- 
+  social_security_2023 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, NOMBRE, TOTAL_SS) |> 
+  drop_na(TOTAL_SS) |> 
+  group_by(INE) |> 
+  summarise(mean_ss = mean(TOTAL_SS, rm.na = T)) |> 
+  ungroup()
+```
+
+Merging with unemployment table
+
+```{r}
+unemployment_2023 <- 
+  unemployment_2023 |> 
+  group_by(INE, NOMBRE) |> 
+  summarise(mean_ue = mean(Paro_total)) |> 
+  ungroup() |> 
+  left_join(social_security_2023, by = "INE") |> 
+  select(INE, NOMBRE, mean_ue, mean_ss) |> 
+  mutate(ue_pct_2023 = (mean_ue/(mean_ue + mean_ss))*100) |> 
+  drop_na()
+```
+
+```{r}
+unemployment_2023 |> 
+  summarise(ue = sum(mean_ue), ss = sum(mean_ss)) |>
+  mutate(ue_pct = (ue/(ue + ss))*100)
+```
+
+Divergence of only 0.1%
+
+```{r}
+unemployment_2023 <- 
+  unemployment_2023 |> 
+  select(INE, ue_pct_2023)
+```
+
+## Unemployment rate (2022)
+
+2023 data for unemployment
+
+Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+
+Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
+
+Unemployment = Paro / Paro + Social Security
+
+```{r}
+unemployment_2022 <- 
   read_xlsx("Data/Paro_por_municipios_2022.xlsx", skip = 1) |> 
   select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
   rename(INE = "Codigo Municipio",
@@ -634,14 +735,14 @@ for (file in excel_files) {
 }
 
 # Combine all data frames into a single object
-social_security <- bind_rows(all_data)
+social_security_2022 <- bind_rows(all_data)
 ```
 
 Wrangling data
 
 ```{r}
-social_security <- 
-  social_security |> 
+social_security_2022 <- 
+  social_security_2022 |> 
   mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
   separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
   mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
@@ -649,115 +750,38 @@ social_security <-
   select(INE, NOMBRE, TOTAL_SS) |> 
   drop_na(TOTAL_SS) |> 
   group_by(INE) |> 
-  summarise(mean_ss_2022 = mean(TOTAL_SS, rm.na = T)) |> 
+  summarise(mean_ss = mean(TOTAL_SS, rm.na = T)) |> 
   ungroup()
-
 ```
 
 Merging with unemployment table
 
 ```{r}
-unemployment <- 
-  unemployment |> 
+unemployment_2022 <- 
+  unemployment_2022 |> 
   group_by(INE, NOMBRE) |> 
   summarise(mean_ue = mean(Paro_total)) |> 
   ungroup() |> 
-  left_join(social_security, by = "INE") |> 
-  select(INE, NOMBRE, mean_ue, mean_ss_2022) |> 
-  mutate(ue_pct_2022 = (mean_ue/(mean_ue + mean_ss_2022))*100) |> 
+  left_join(social_security_2022, by = "INE") |> 
+  select(INE, NOMBRE, mean_ue, mean_ss) |> 
+  mutate(ue_pct_2022 = (mean_ue/(mean_ue + mean_ss))*100) |> 
   drop_na()
 ```
 
 ```{r}
-unemployment |> 
-  summarise(ue = sum(mean_ue), ss = sum(mean_ss_2022)) |>
-  mutate(ue_pct_2022 = (ue/(ue + ss))*100)
+unemployment_2022 |> 
+  summarise(ue = sum(mean_ue), ss = sum(mean_ss)) |>
+  mutate(ue_pct = (ue/(ue + ss))*100)
 ```
 
 Divergence of only 0.1%
 
 ```{r}
-unemployment <- 
-  unemployment |> 
-  select(INE, ue_pct_2022, mean_ss_2022)
+unemployment_2022 <- 
+  unemployment_2022 |> 
+  select(INE, ue_pct_2022)
 ```
 
-## Change in unemployment
-
-Idea change over month as change in number of unemployed to calculate job creation later on
-
-```{r}
-ue_2022 <- read_xlsx("Data/Paro_por_municipios_segundo_semestre_2022.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
-  filter(mes == "Diciembre de 2022") |> 
-  rename(INE = "Codigo Municipio",
-         NOMBRE = Municipio,
-         Paro_total = "total Paro Registrado") |> 
-  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) 
-
-
-ue_2023 <- 
-  read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
-  rename(INE = "Codigo Municipio",
-         NOMBRE = Municipio,
-         Paro_total = "total Paro Registrado") |> 
-  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) 
-
-ue_change <- rbind(ue_2022, ue_2023)
-
-rm(ue_2022, ue_2023)
-
-ue_change <- 
-  ue_change |> # 2.5 because in between 0 and 5
-  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total))) |>  
-  group_by(INE) |> 
-  mutate(ue_change = Paro_total - lag(Paro_total)) |>
-  ungroup() |> 
-  filter(mes != "Diciembre de 2022") |> 
-  group_by(INE) |> 
-  summarise(mean_ue_change = mean(ue_change, rm.na = T),
-            mean_ue_2023 = mean(Paro_total, rm.na = T)) |> 
-  ungroup()
-```
-
-Social security for score generation down below
-
-```{r}
-# Setting the directory path where csv files are located
-folder_path <- "Data/SS_2023"
-
-# Getting a list of csv files in the folder
-excel_files <- list.files(folder_path, full.names = TRUE)
-
-# Initializing an empty list to store data frames
-all_data <- list()
-
-# Looping through each csv file and read it into a data frame
-for (file in excel_files) {
-
-  data <- read_excel(file, skip = 1)
-  
-  # Append the data frame to the list
-  all_data[[length(all_data) + 1]] <- data
-}
-
-# Combine all data frames into a single object
-ss_2023 <- bind_rows(all_data)
-
-
-ss_2023 <- 
-  ss_2023 |> 
-  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
-  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
-  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
-  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
-  select(INE, NOMBRE, TOTAL_SS) |> 
-  drop_na(TOTAL_SS) |> 
-  group_by(INE) |> 
-  summarise(mean_ss_2023 = mean(TOTAL_SS, rm.na = T)) |> 
-  ungroup()
-```
 
 ## Income
 
@@ -868,7 +892,8 @@ political_leadership_CCAA <-
 ```{r}
 objects <- ls()
 object_to_keep <- c("df_spen_imp_mun_tidy", 
-                    "unemployment", 
+                    "unemployment_2023",
+                    "unemployment_2022",
                     "population", 
                     "n_firms", 
                     "dist_cap",
@@ -877,14 +902,12 @@ object_to_keep <- c("df_spen_imp_mun_tidy",
                     "political_leadership_CCAA",
                     "political_leadership_mun",
                     "spending_CCAA_final",
-                    "median_income",
-                    "ue_change",
-                    "ss_2023")
+                    "median_income")
 objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
 
-### Merging tables
+## Merging tables
 
 -   also adding per capita spending municipality
 
@@ -892,9 +915,8 @@ rm(list = objects_to_remove)
 df <- 
   df_spen_imp_mun_tidy |> 
   left_join(dist_cap, by =  "INE") |> 
-  left_join(ue_change, by = "INE") |>  
-  left_join(ss_2023, by = "INE") |>
-  left_join(unemployment, by = "INE") |> 
+  left_join(unemployment_2023, by = "INE") |> 
+  left_join(unemployment_2022, by = "INE") |>
   left_join(population, by = "INE") |> 
   left_join(n_firms, by = "INE") |> 
   left_join(avg_age_final, by = "INE") |> 
@@ -914,6 +936,7 @@ df <-
   df |>
   mutate(per_capita_MUN = total_MUN/pop_total,
          pop_density = pop_total/ area_sqkm,
+         per_capita_contracts = contracts_mean_2022/pop_total,
          n_firms = as.numeric(n_firms))
 ```
 
@@ -950,30 +973,19 @@ df <-
          r_and_d = "Investigación, desarrollo e innovación",
          trans_public_agencies = "Transferencias a otras Administraciones Públicas",
          agr_farm_fish = "Agricultura, Ganadería y Pesca",
-         pensions = "Pensiones") |> 
+         pensions = "Pensiones",
+         other_econ = "Otras actuaciones de carácter económico") |> 
   mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
   mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_MUN))
 ```
 
-### REMOVE IF NECESSARY
-
-```{r, eval=FALSE}
-df_final <- 
-  df_final |> 
-  filter(!is.na(ue_pct))
-#per_capita_contracts = contracts_mean_2023/pop_total,
-```
-
-
-### Job creation score
 
 ```{r}
 df_final <- 
   df |> 
-  mutate(job_creation = ((contracts_mean_2023 / (mean_ss_2023 + mean_ue_2023)) - (mean_ue_change / (mean_ss_2023 + mean_ue_2023))) * 100) |> 
-  drop_na(job_creation)
-
+  filter(!is.na(ue_pct_2023))
 ```
+
 
 Saving data frame
 
