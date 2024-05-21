@@ -79,12 +79,12 @@ Variable Returns to Scale (RTS = "Variable"): This assumption allows for flexibi
 ## DEA
 ### Naive
 ```{r}
-X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap", "per_capita_contracts")]
+X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap")]
 
-Y <- df_final[c("target", "ue_pct_2023")]
+Y <- df_final[c("target")]
 Y <- 
   Y |> 
-  mutate(ue_pct_2023 = 100 - ue_pct_2023) # DEA does not know how to handel negative value --> adding 100 to 
+  mutate(target = (target * -1)+100) # DEA does not know how to handel negative value --> adding 100 to 
 
 # Mean normalization function
 mean_normalize <- function(x) {
@@ -114,12 +114,13 @@ target = (target * -1)+100
 
 ### Robust
 ```{r}
-X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_contracts")]
+X <- df_final[c("n_firms", "per_capita_MUN")]
 
-Y <- df_final[c("target")]
+Y <- df_final[c("target", "ue_pct_2023")]
 Y <- 
   Y |> 
-  mutate(ue_pct_2023 = 100 - ue_pct_2023) # DEA does not know how to handle negative value --> adding 100 to 
+  mutate(target = (target * -1)+100,
+         ue_pct_2023 = 100 - ue_pct_2023) # DEA does not know how to handle negative value --> adding 100 to 
 
 Z <- df_final[c("dist_prov_cap", "per_capita_CCAA")]
 
@@ -160,7 +161,7 @@ All variables without additional meaning and variables used in estimating effici
 ```{r}
 df_model <- 
   df_dea |> 
-  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, ue_pct_2023, pop_share_wk_age, contracts_mean_2022, per_capita_contracts))
+  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, ue_pct_2023, contracts_mean_2022))
 ```
 
 ### Data imputation
@@ -261,7 +262,7 @@ corr<-round(corr,4)
 df_corr_results <- 
   data.frame(corr) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:33,
+               cols = 1:32,
                names_to = "variable")
 
 ggplot(df_corr_results, aes(x = variable, y = correlation)) +
@@ -310,7 +311,7 @@ non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")]
 
 df_model_final <- 
   df_model_imp |> 
-  dplyr::select(all_of(non_zero_vars), party_mun, party_ccaa, dea_naive, greater_20k)
+  dplyr::select(all_of(non_zero_vars), party_mun, party_ccaa, dea_naive )
 ```
 
 ### Modelling
@@ -331,7 +332,7 @@ test.data <- df_model_final[-training.samples, ]
 
 ```{r}
 set.seed(3456)
-rf_tune <- train(dea_naive ~., 
+rf_tune <- train(dea_naive ~.,  
                  data = train.data,
                  method = "rf",
                  preProc=c('scale','center'),
@@ -350,6 +351,9 @@ plot(varImp(rf_tune))
 
 only target 
 0.4654844
+
+only target (but per_capita_contracts in DEA)
+0.4433757
 
 only target (population > 2500)
 0.2527986
@@ -425,7 +429,7 @@ corr<-round(corr,4)
 df_corr_results <- 
   data.frame(corr) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:33,
+               cols = 1:32,
                names_to = "variable")
 
 ggplot(df_corr_results, aes(x = variable, y = correlation)) +
