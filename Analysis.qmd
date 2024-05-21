@@ -25,9 +25,10 @@ library(xgboost)
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data/TFM_data_2024-05-13_.csv", colClasses = c(INE = "character")) |> 
+df_final <- read.csv("Data/TFM_data_2024-05-20.csv", colClasses = c(INE = "character")) |> 
   select(-X)
 ```
+
 
 ### Data Envelopment Analysis
 
@@ -75,103 +76,25 @@ Using per capita spending on CCAA level and distance from provincial capital as 
 
 Variable Returns to Scale (RTS = "Variable"): This assumption allows for flexibility in the relationship between inputs and outputs. It recognizes that the impact of municipal spending on reducing unemployment may vary across municipalities due to factors such as local economic conditions, labor market dynamics, and policy effectiveness.
 
-## rDEA package
-
-### Robust
-```{r}
-X <- df_final[c("n_firms", "per_capita_MUN")]
-
-epsilon <- 0.000000001  # Defining a small positive constant for smoothing
-Y <- df_final[c("ue_pct_2023")]
-Y <- 
-  Y |> 
-  mutate(ue_pct_2023 = (100 - ue_pct_2023) + epsilon)
-
-Z <- df_final[c("dist_prov_cap")]
-
-dea_robust <- 
-  dea.env.robust(X, Y, W=NULL, Z, model="output", RTS="variable",
-                L1=10, L2=100, alpha=0.05)
-```
-Calculating the efficiency score
-
-```{r}
-sorted_scores <- sort(dea_robust$delta_hat_hat, decreasing = TRUE)
-best_score <- max(sorted_scores)
-relative_efficiency <- dea_robust$delta_hat_hat / best_score
-
-test <- 
-  df_final |> 
-  mutate(dea_robust = dea_robust$delta_hat_hat) 
-
-test |> 
-  ggplot() +
-  geom_histogram(aes(log(dea_robust)+1))
-```
-
-
-```{r}
-test <- 
-  test |> 
-  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, ue_pct_2023))
-```
-
-
-#### Imputation
-
-```{r}
-m <- 5
-set.seed(475)
-imp <- mice(test, m = m, method= "rf")
-test <- complete(imp, action=m)
-
-test <- 
-  test |> 
-  filter(!is.na(party_mun))
-```
-
-
-#### Training and testing
-
-```{r}
-set.seed(123)  
-training.samples <-
-  test$dea_robust |> 
-  createDataPartition(p = 0.8, list = FALSE)
-
-training  <- test[training.samples, ]
-testing <- test[-training.samples, ] 
-```
-
-
-#### Random forrest
-
-```{r}
-set.seed(3456)
-rf_fit <- train(log(dea_robust)+1 ~., 
-                 data = training,
-                 method = "rf",
-                 preProc=c('scale','center'),
-                 trControl = ctrl,
-                 ntree = 100,
-                 tuneGrid = data.frame(mtry=c(6,7,8,9)),
-                 importance = TRUE)
-
-rf_fit
-
-any(is.na(training))
-```
-
-
+## DEA
 ### Naive
 ```{r}
-X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap")]
-epsilon <- 1e-6  # Defining a small positive constant for smoothing
+X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_CCAA", "dist_prov_cap", "per_capita_contracts")]
 
-Y <- df_final[c("ue_pct_2023")]
+Y <- df_final[c("target", "ue_pct_2023")]
 Y <- 
   Y |> 
-  mutate(ue_pct_2023 = (100 - ue_pct_2023) + epsilon)
+  mutate(ue_pct_2023 = 100 - ue_pct_2023) # DEA does not know how to handel negative value --> adding 100 to 
+
+# Mean normalization function
+mean_normalize <- function(x) {
+  return((x - mean(x)) / (max(x) - min(x))+1)
+}
+
+# Apply mean normalization to each column
+X <- X %>% mutate(across(everything(), mean_normalize))
+
+Y <- Y |> mutate(across(everything(), mean_normalize))
 
 dea_naive <- 
   dea(XREF=X, YREF=Y, X=X, Y=Y,model="output", RTS="variable")
@@ -184,10 +107,80 @@ df_dea <-
   df_final |> 
   mutate(dea_naive = dea_naive$thetaOpt) 
 ```
+,
+         ue_pct_2023 = 100 - ue_pct_2023
+         
+target = (target * -1)+100
 
-### Descriptive analysis of results
+### Robust
+```{r}
+X <- df_final[c("n_firms", "per_capita_MUN", "per_capita_contracts")]
 
-#### Distribution
+Y <- df_final[c("target")]
+Y <- 
+  Y |> 
+  mutate(ue_pct_2023 = 100 - ue_pct_2023) # DEA does not know how to handle negative value --> adding 100 to 
+
+Z <- df_final[c("dist_prov_cap", "per_capita_CCAA")]
+
+# Mean normalization function
+mean_normalize <- function(x) {
+  return((x - mean(x)) / (max(x) - min(x))+1)
+}
+
+# Apply mean normalization to each column
+X <- X %>% mutate(across(everything(), mean_normalize))
+
+Z <- Z %>% mutate(across(everything(), mean_normalize))
+
+Y <- Y |> mutate(across(everything(), mean_normalize))
+
+dea_robust <- 
+  dea.env.robust(X, Y, W=NULL, Z, model="output", RTS="variable",
+                L1=10, L2=100, alpha=0.05)
+```
+Calculating the efficiency score
+
+```{r}
+sorted_scores <- sort(dea_robust$delta_hat_hat, decreasing = TRUE)
+best_score <- max(sorted_scores)
+delta_hat_hat <- dea_robust$delta_hat_hat
+
+df_dea <- 
+  df_dea |> 
+  mutate(dea_robust = delta_hat_hat/best_score) 
+```
+
+## Finalizing data frame
+
+### Variable selection
+
+All variables without additional meaning and variables used in estimating efficiency score
+
+```{r}
+df_model <- 
+  df_dea |> 
+  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, ue_pct_2023, pop_share_wk_age, contracts_mean_2022, per_capita_contracts))
+```
+
+### Data imputation
+
+```{r}
+m <- 5
+set.seed(475)
+imp <- mice(df_model, m = m, method= "rf")
+df_model_imp <- complete(imp, action=m)
+
+df_model_imp <- 
+  df_model_imp |> 
+  filter(!is.na(party_mun))
+```
+
+## Analysis - Naive
+
+### Descriptive analysis of results 
+
+#### Distribution 
 
 ```{r}
 df_dea |> 
@@ -245,44 +238,30 @@ t_test_result
 ```
 ## Building the model
 
-### Variable selection
 
-All variables without additional meaning and variables used in estimating efficiency score
 
-```{r}
-df_model <- 
-  df_dea |> 
-  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, pop_below_16, pop_16_64, pop_above_65, pop_foreigners, ue_pct_2023))
-```
-
-### Data imputation
+### Correlation - naive
 
 ```{r}
-m <- 5
-set.seed(475)
-imp <- mice(df_model, m = m, method= "rf")
-df_model_imp <- complete(imp, action=m)
-
-df_model_imp <- 
+df_model_naive <- 
   df_model_imp |> 
-  filter(!is.na(party_mun))
+  select(-dea_robust)
 ```
 
-### Correlation
 
 ```{r}
 df_corr <-
-  df_model_imp |> 
+  df_model_naive |> 
   dplyr::select(-dea_naive) |>
   select_if(is.numeric)
 
-corr<- cor(df_model_imp$dea_naive, df_corr)
+corr<- cor(df_model_naive$dea_naive, df_corr)
 corr<-round(corr,4)
 
 df_corr_results <- 
   data.frame(corr) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:37,
+               cols = 1:33,
                names_to = "variable")
 
 ggplot(df_corr_results, aes(x = variable, y = correlation)) +
@@ -292,13 +271,15 @@ ggplot(df_corr_results, aes(x = variable, y = correlation)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
 ```
 
+
+
+
 ### Feature engineering
 
 ```{r}
 ggplot(df_model_imp)+
-  geom_point(aes(x = employment_promotion, y = dea_naive))
+  geom_point(aes(x = median_inc_con_unit, y = dea_naive))
 ```
-
 
 ### Lasso regression
 
@@ -309,7 +290,7 @@ ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
 # Train the LASSO model
 set.seed(123)
 lasso_model <- train(dea_naive ~ .,
-                     data = df_model_imp,
+                     data = df_model_naive,
                      method = "glmnet",
                      trControl = ctrl,
                      tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)))
@@ -329,7 +310,7 @@ non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")]
 
 df_model_final <- 
   df_model_imp |> 
-  dplyr::select(all_of(non_zero_vars), party_mun, party_ccaa, dea_naive)
+  dplyr::select(all_of(non_zero_vars), party_mun, party_ccaa, dea_naive, greater_20k)
 ```
 
 ### Modelling
@@ -356,11 +337,31 @@ rf_tune <- train(dea_naive ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(6,7,8,9)),
+                 tuneGrid = data.frame(mtry=c(17,18,19,20,21,22)),
                  importance = TRUE)
 
 rf_tune$finalModel$importance
+
+rf_tune$results
+
+plot(varImp(rf_tune))
 ```
+#### Highest
+
+only target 
+0.4654844
+
+only target (population > 2500)
+0.2527986
+
+target + ue_pct_2023 + per_capita_contracts
+0.3568178
+
+target + per capita_contracts (including ue_pct_2022 as predictor)
+0.4476367
+
+target + per capita_contracts (population > 2500)
+0.2638064
 
 ```{r}
 plot(rf_tune)
@@ -381,6 +382,165 @@ xgb_tune <- train(dea_naive ~.,
                                          eta = c(0.1),
                                          gamma = c(0.1, 0.3, 0.5, 0.7, 0.9, 1),
                                          colsample_bytree = c(0.2, 0.3, 0.4, 0.5),
+                                         min_child_weight = c(1),
+                                         subsample = c(0.8)))
+
+xgb_tune
+
+plot(xgb_tune)
+```
+
+## Analysis - Robust
+
+### Distribution
+
+```{r}
+df_dea |> 
+  ggplot()+
+  geom_histogram(aes(dea_robust))
+
+df_dea |> 
+  filter(dea_robust == 1)
+```
+
+
+### Correlation - robust
+
+```{r}
+df_model_robust <- 
+  df_model_imp |> 
+  select(-dea_naive)
+```
+
+
+```{r}
+df_corr <-
+  df_model_robust |> 
+  dplyr::select(-dea_robust) |>
+  select_if(is.numeric)
+
+corr<- cor(df_model_robust$dea_robust, df_corr)
+corr<-round(corr,4)
+
+df_corr_results <- 
+  data.frame(corr) |> 
+  pivot_longer(values_to = "correlation",
+               cols = 1:33,
+               names_to = "variable")
+
+ggplot(df_corr_results, aes(x = variable, y = correlation)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Correlation with DEA efficiency score", x = "Variable", y = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
+```
+
+### Lasso regression
+
+```{r}
+# Define the control parameters for LASSO regression
+ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+
+# Train the LASSO model
+set.seed(123)
+lasso_model <- train(dea_robust ~ .,
+                     data = df_model_robust,
+                     method = "glmnet",
+                     trControl = ctrl,
+                     tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)))
+
+lasso_coef <- coef(lasso_model$finalModel, s = lasso_model$finalModel$lambdaOpt)
+
+non_zero_vars <- rownames(lasso_coef)[lasso_coef[,1]!=0]
+
+non_zero_vars <- non_zero_vars[-1] 
+
+non_zero_vars
+```
+
+```{r}
+non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")]
+
+
+df_model_final <- 
+  df_model_robust |> 
+  dplyr::select(all_of(non_zero_vars), dea_robust, party_mun, party_ccaa, greater_20k)
+```
+
+### Modelling
+
+#### Training and testing
+
+```{r}
+set.seed(123)  
+training.samples <-
+  df_model_final$dea_robust |> 
+  createDataPartition(p = 0.8, list = FALSE)
+
+train.data  <- df_model_final[training.samples, ]
+test.data <- df_model_final[-training.samples, ] 
+```
+
+#### Random forest 
+
+```{r}
+set.seed(3456)
+rf_tune <- train(dea_robust ~., 
+                 data = train.data,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 importance = TRUE)
+
+rf_tune$finalModel$importance
+
+rf_tune$results
+
+varImp(rf_tune)
+```
+##### Highest
+
+only target (population > 2500)
+0.2427973	
+
+target + ue_pct_2023
+Rsquared 0.3027631
+
+target + ue_pct_2023 (population > 1000)
+Rsquared 0.2685074
+
+target + ue_pct_2023 (population > 2500)
+Rsquared: 0.3909410	
+
+target + ue_pct_2023 + per_capita_contracts
+Rsquared 0.2701871
+
+target + per_capita_contracts (including ue_pct_2022)
+0.1292275
+
+target + per_capita_contracts (population > 1000)
+0.1627656
+
+target + per_capita_contracts (population > 5000)
+0.2952929
+
+
+
+```{r}
+set.seed(123)
+xgb_tune <- train(dea_robust ~., 
+                  data = train.data,
+                  method = "xgbTree",
+                  preProc=c('scale','center'),
+                  objective = "reg:squarederror",
+                  trControl = ctrl,
+                  tuneGrid = expand.grid(nrounds = c(700, 800, 900, 1000, 1500), 
+                                         max_depth = c(7, 8), 
+                                         eta = c(0.1),
+                                         gamma = c(0.05, 0.1, 0.15),
+                                         colsample_bytree = c(0.4, 0.5),
                                          min_child_weight = c(1),
                                          subsample = c(0.8)))
 

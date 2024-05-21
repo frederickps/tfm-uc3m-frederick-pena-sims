@@ -434,7 +434,7 @@ Manually changed data type to xlsx because csv did not work
 
 ```{r}
 contracts <- 
-  read_xlsx("Data/Contratos_por_municipios_2022.xlsx", skip = 1) |> 
+  read_xlsx("Data/Contratos_por_municipios_2023.xlsx", skip = 1) |> 
   select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
   rename(INE = "Codigo Municipio",
          NOMBRE = Municipio,
@@ -479,7 +479,7 @@ population <-
   population |> 
   filter(municipio == "1 de enero de 2022" | lead(municipio) == "1 de enero de 2022") |> 
   mutate(across(.cols = -municipio, .fns = lead)) |> 
-  slice(-n()) |> 
+  dplyr::slice(-n()) |> 
   filter(municipio != "1 de enero de 2022") |>
   mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
@@ -598,7 +598,167 @@ n_firms <-
   select(-NOMBRE)
 ```
 
-## Target - Unemployment rate (2023)
+## Target - Difference in unemployment rate
+
+Calculating the average monthly difference in unemployment between 2023 and 2022 
+
+Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+
+Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
+
+### 2023
+```{r}
+unemployment_2023 <- 
+  read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+```{r}
+# Setting the directory path where csv files are located
+folder_path <- "Data/SS_2023"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 1)
+  
+  # Add a new column 'mes' with the value of i
+  data$mes <- i
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+# Combine all data frames into one if needed
+social_security_2023 <- do.call(rbind, all_data)
+
+social_security_2023 <- 
+  social_security_2023 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, TOTAL_SS, mes) |> 
+  drop_na(TOTAL_SS) |> 
+  mutate(mes = case_when(mes == 1 ~ "Enero de 2023",
+                         mes == 2 ~ "Febrero de 2023",
+                         mes == 3 ~ "Marzo de 2023",
+                         mes == 4 ~ "Abril de 2023",
+                         mes == 5 ~ "Mayo de 2023",
+                         mes == 6 ~ "Junio de 2023",
+                         mes == 7 ~ "Julio de 2023",
+                         mes == 8 ~ "Agosto de 2023",
+                         mes == 9 ~ "Septiembre de 2023",
+                         mes == 10 ~ "Octubre de 2023",
+                         mes == 11 ~ "Noviembre de 2023",
+                         mes == 12 ~ "Diciembre de 2023"))
+```
+
+
+```{r}
+unemployment_2023_monthly <- 
+  unemployment_2023 |> 
+  left_join(social_security_2023, by = c("INE", "mes")) |> 
+  mutate(ue_mes_2023 = (Paro_total / (Paro_total + TOTAL_SS))*100) |> 
+  select(mes, INE, ue_mes_2023)|> 
+  mutate(mes = str_extract(mes, "^\\w+"))
+```
+
+### 2022
+
+```{r}
+unemployment_2022 <- 
+  read_xlsx("Data/Paro_por_municipios_2022.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+```{r}
+# Setting the directory path where csv files are located
+folder_path <- "Data/SS_2022"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 1)
+  
+  # Add a new column 'mes' with the value of i
+  data$mes <- i
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+# Combine all data frames into one if needed
+social_security_2022 <- do.call(rbind, all_data)
+
+social_security_2022 <- 
+  social_security_2022 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, TOTAL_SS, mes) |> 
+  drop_na(TOTAL_SS) |> 
+  mutate(mes = case_when(mes == 1 ~ "Enero de 2022",
+                         mes == 2 ~ "Febrero de 2022",
+                         mes == 3 ~ "Marzo de 2022",
+                         mes == 4 ~ "Abril de 2022",
+                         mes == 5 ~ "Mayo de 2022",
+                         mes == 6 ~ "Junio de 2022",
+                         mes == 7 ~ "Julio de 2022",
+                         mes == 8 ~ "Agosto de 2022",
+                         mes == 9 ~ "Septiembre de 2022",
+                         mes == 10 ~ "Octubre de 2022",
+                         mes == 11 ~ "Noviembre de 2022",
+                         mes == 12 ~ "Diciembre de 2022"))
+```
+
+
+```{r}
+unemployment_2022_monthly <- 
+  unemployment_2022 |> 
+  left_join(social_security_2022, by = c("INE", "mes")) |> 
+  mutate(ue_mes_2022 = (Paro_total / (Paro_total + TOTAL_SS))*100) |> 
+  select(mes, INE, ue_mes_2022) |> 
+  mutate(mes = str_extract(mes, "^\\w+"))
+```
+
+### Difference
+
+```{r}
+target <- 
+  unemployment_2023_monthly |> 
+  left_join(unemployment_2022_monthly, by = c("INE", "mes")) |> 
+  mutate(target = ue_mes_2023 - ue_mes_2022) |> 
+  group_by(INE) |> 
+  summarise(target = mean(target))
+```
+
+## Unemployment rate (2023)
 
 2023 data for unemployment
 
@@ -611,7 +771,7 @@ Unemployment = Paro / Paro + Social Security
 ```{r}
 unemployment_2023 <- 
   read_xlsx("Data/Paro_por_municipios_2023.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
   rename(INE = "Codigo Municipio",
          NOMBRE = Municipio,
          Paro_total = "total Paro Registrado") |> 
@@ -689,99 +849,6 @@ unemployment_2023 <-
   unemployment_2023 |> 
   select(INE, ue_pct_2023)
 ```
-
-## Unemployment rate (2022)
-
-2023 data for unemployment
-
-Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
-
-Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
-
-Unemployment = Paro / Paro + Social Security
-
-```{r}
-unemployment_2022 <- 
-  read_xlsx("Data/Paro_por_municipios_2022.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado", "Paro Sin empleo Anterior") |> 
-  rename(INE = "Codigo Municipio",
-         NOMBRE = Municipio,
-         Paro_total = "total Paro Registrado") |> 
-  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
-  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
-```
-
-Social Security data for active population
-
-Reading data
-
-```{r}
-# Setting the directory path where csv files are located
-folder_path <- "Data/SS_2022"
-
-# Getting a list of csv files in the folder
-excel_files <- list.files(folder_path, full.names = TRUE)
-
-# Initializing an empty list to store data frames
-all_data <- list()
-
-# Looping through each csv file and read it into a data frame
-for (file in excel_files) {
-
-  data <- read_excel(file, skip = 1)
-  
-  # Append the data frame to the list
-  all_data[[length(all_data) + 1]] <- data
-}
-
-# Combine all data frames into a single object
-social_security_2022 <- bind_rows(all_data)
-```
-
-Wrangling data
-
-```{r}
-social_security_2022 <- 
-  social_security_2022 |> 
-  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
-  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
-  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
-  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
-  select(INE, NOMBRE, TOTAL_SS) |> 
-  drop_na(TOTAL_SS) |> 
-  group_by(INE) |> 
-  summarise(mean_ss = mean(TOTAL_SS, rm.na = T)) |> 
-  ungroup()
-```
-
-Merging with unemployment table
-
-```{r}
-unemployment_2022 <- 
-  unemployment_2022 |> 
-  group_by(INE, NOMBRE) |> 
-  summarise(mean_ue = mean(Paro_total)) |> 
-  ungroup() |> 
-  left_join(social_security_2022, by = "INE") |> 
-  select(INE, NOMBRE, mean_ue, mean_ss) |> 
-  mutate(ue_pct_2022 = (mean_ue/(mean_ue + mean_ss))*100) |> 
-  drop_na()
-```
-
-```{r}
-unemployment_2022 |> 
-  summarise(ue = sum(mean_ue), ss = sum(mean_ss)) |>
-  mutate(ue_pct = (ue/(ue + ss))*100)
-```
-
-Divergence of only 0.1%
-
-```{r}
-unemployment_2022 <- 
-  unemployment_2022 |> 
-  select(INE, ue_pct_2022)
-```
-
 
 ## Income
 
@@ -891,9 +958,9 @@ political_leadership_CCAA <-
 
 ```{r}
 objects <- ls()
-object_to_keep <- c("df_spen_imp_mun_tidy", 
+object_to_keep <- c("df_spen_imp_mun_tidy",
+                    "target",
                     "unemployment_2023",
-                    "unemployment_2022",
                     "population", 
                     "n_firms", 
                     "dist_cap",
@@ -916,7 +983,7 @@ df <-
   df_spen_imp_mun_tidy |> 
   left_join(dist_cap, by =  "INE") |> 
   left_join(unemployment_2023, by = "INE") |> 
-  left_join(unemployment_2022, by = "INE") |>
+  left_join(target, by = "INE") |> 
   left_join(population, by = "INE") |> 
   left_join(n_firms, by = "INE") |> 
   left_join(avg_age_final, by = "INE") |> 
@@ -983,6 +1050,7 @@ df <-
 ```{r}
 df_final <- 
   df |> 
+  filter(!is.na(target)) |> 
   filter(!is.na(ue_pct_2023))
 ```
 
@@ -990,5 +1058,5 @@ df_final <-
 Saving data frame
 
 ```{r}
-write.csv(df_final, paste("Data/TFM_data", Sys.Date(), ".csv", sep = "_"))
+write.csv(df_final, paste("Data/TFM_data_", Sys.Date(), ".csv", sep = ""))
 ```
