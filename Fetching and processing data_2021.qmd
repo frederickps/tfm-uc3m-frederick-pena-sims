@@ -1,0 +1,1184 @@
+---
+title: "Master Thesis - Fetching and processing Data"
+author: "Frederick Pena Sims"
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Library
+
+```{r setup, include=FALSE}
+options(scipen = 999)
+library(odbc)
+library(RODBC)
+library(tidyverse)
+library(readxl)
+library(DBI)
+```
+
+## Getting municipal spending data
+
+Explain
+
+From: <https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL>
+
+```{r}
+unique(odbc::odbcListDrivers()[[1]])
+
+dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Data_2020/Liquidaciones2020.mdb"
+
+con <- dbConnect(odbc::odbc(),
+                 Driver = "Microsoft Access Driver (*.mdb, *.accdb)",
+                 DBQ = dbname)
+
+tables <- dbListTables(con)
+print(tables)
+```
+
+Getting tables I want –\> keeping cdfgr as character to keep preceeding zeroes
+
+```{r}
+
+tb_funcionalPorEntes <- dbReadTable(con, "v_funcionalPorEntes", colClasses = c(F, F, F, F, F, F, F, "character", F, F, F))
+
+tb_cuentasProgramas <- dbReadTable(con, "tb_cuentasProgramas")
+```
+
+## Processing municipal spending data
+
+### Applying official classification
+
+Joining codigo municipio for official classification
+
+Creating common ID
+
+```{r}
+codigo_municipio <- read_excel("Data/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
+  mutate(INE = paste0(CPRO, CMUN),
+         Provincia = as.integer(CPRO))
+
+tb_funcionalPorEntes <- 
+  tb_funcionalPorEntes |>
+  mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
+```
+
+Joining
+
+```{r}
+tb_funcionalPorMunicipios <- 
+  tb_funcionalPorEntes |> 
+  inner_join(codigo_municipio, by = "INE") |> 
+  inner_join(tb_cuentasProgramas, by ="cdfgr")
+```
+
+### Organizing spending data per municipality
+
+Standardizing codification and reducing number of spending reasons
+
+```{r}
+Madrid <- tb_funcionalPorMunicipios |> 
+  arrange(poblacion) |> 
+  slice_head(n = 30) |> 
+  select(INE, cdfgr, importe, nombre)
+
+```
+
+What variables do I want to have?
+
+Only codes with two characters
+
+-   more fine grained than the overarching descriptions but not too fine grained to produce
+
+-   not too fine grained to create too many variables
+
+-   Problem: certain municipalities will not have had an expenditure for every two charachter reason
+
+Also, deleting all mancomunidades from the dataframe.
+
+Also deleting every Entidad de ámbito territorial inferior al municipio (EATIM)
+
+-   NOMBRE from codigo_municipio and NombreEnte form database
+
+```{r}
+tb_funcionalPorMunicipios <-
+  tb_funcionalPorMunicipios |> 
+  mutate(cdfgr = trimws(as.character(cdfgr)),
+         NombreEnte = trimws(as.character(NombreEnte)),
+         NOMBRE = trimws(as.character(NOMBRE))) |> 
+  filter(nchar(cdfgr) == 2 & !str_detect(NombreEnte, "^Mc") 
+         & NombreEnte == NOMBRE)
+```
+
+Total spending per reason
+
+Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
+
+summarized spending contains one total amount spent per reason
+
+```{r}
+summarized_spending <- tb_funcionalPorMunicipios |> 
+  group_by(cdfgr, INE) |> 
+  summarize(total_spending = sum(importe)) |> 
+  ungroup()
+
+total_importePorMunicipio <- tb_funcionalPorMunicipios |> 
+  group_by(INE) |> 
+  summarize(total_importe = sum(importe)) |> 
+  ungroup()
+```
+
+Keeping only one spending amount and spending reason per municipality
+
+--\> because in the base table each spending reason is listed as many times as money was spent on it
+
+--\> keeping only one then keeps only one reason + total spending combination
+
+```{r}
+tb_importePorPrograma <-
+  tb_funcionalPorMunicipios |> 
+  left_join(summarized_spending, by = c("cdfgr", "INE")) |>
+  left_join(total_importePorMunicipio, by = "INE") |> 
+  group_by(INE, cdfgr) |> 
+  distinct(cdfgr, .keep_all = T) |> 
+  ungroup()
+
+# verifying that each funds destination is only listed once now per municipality
+verification1 <-
+  tb_importePorPrograma |> 
+  filter(INE == "02001") |> 
+  count(cdfgr)
+
+verification1
+```
+
+Now calculating the share of each spending
+
+```{r}
+tb_partedeImporte <-
+  tb_importePorPrograma |> 
+  group_by(INE) |>
+  mutate(share_spending = (total_spending/total_importe)*100) |> 
+  ungroup() |> 
+  mutate(nombre = trimws(nombre))
+
+# verifying that each funds destination is only listed once now per municipality
+verification2 <-
+  tb_importePorPrograma |> 
+  group_by(INE) |>
+  mutate(share_spending = (total_spending/total_importe)*100) |>
+  ungroup() |> 
+  filter(INE == "28079") |> 
+  count(cdfgr)
+
+verification2
+```
+
+Pivoting this data frame wider
+
+```{r}
+df_spending_mun_tidy <-
+  tb_partedeImporte |> 
+  select(INE, NOMBRE, CODAUTO, CPRO, nombre, share_spending, total_importe) |> 
+  pivot_wider(names_from = nombre,
+              values_from = share_spending)
+```
+
+Imputing zeroes as NAs mean that the municipality did not spend money on a given end.
+
+```{r}
+df_spen_imp_mun_tidy <- 
+  df_spending_mun_tidy |> 
+  mutate_if(is.numeric, ~ifelse(is.na(.), 0, .)) |> 
+  rename(total_MUN = total_importe)
+```
+
+### Number of municipalities
+
+```{r}
+n_distinct(df_spen_imp_mun_tidy$INE)
+```
+
+6358 municipalities
+
+Where is the difference
+
+```{r}
+m <-
+  df_spen_imp_mun_tidy |>
+  mutate(CODAUTO_data = CODAUTO) |> 
+  group_by(CODAUTO_data) |> 
+  distinct(INE) |> 
+  count(CODAUTO_data)
+# adding missing community 
+new_row <- data.frame(CODAUTO_data = "19", n = 0)
+m <- m |> 
+  bind_rows(new_row)
+
+o <- 
+  codigo_municipio |>
+  mutate(CODAUTO_original = CODAUTO) |> 
+  group_by(CODAUTO_original) |> 
+  distinct(INE) |> 
+  count(CODAUTO_original)
+
+difference_n_mun <- o |> 
+  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
+  mutate(difference = n.x - n.y,
+         proportion = (difference/n.x)*100)
+
+plot1 <-
+  difference_n_mun |> 
+  ggplot()+
+  geom_col(aes(CODAUTO_original, proportion)) +
+  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
+            vjust = -0.4,
+            size = 2.5) +
+  labs(title = "Share of missing Municipalities by Autonomous Region") +
+  theme_minimal()
+
+ggsave("Data_2020/Plotting missing municipalities.png", bg = "white")
+```
+
+### Final data set for expenditure per municipality
+
+```{r}
+head(df_spen_imp_mun_tidy)
+```
+
+## CCAA expenditure
+
+```{r}
+CCAA_01 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 3, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "01",
+         total = total * 1000000)
+
+CCAA_02 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 4, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "02",
+         total = total * 1000000)
+
+CCAA_03 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 5, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "03",
+         total = total * 1000000)
+
+CCAA_04 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 6, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "04",
+         total = total * 1000000)
+
+CCAA_05 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 7, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "05",
+         total = total * 1000000)
+
+CCAA_06 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 8, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "06",
+         total = total * 1000000)
+
+CCAA_07 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 10, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "07",
+         total = total * 1000000)
+
+CCAA_08 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 9, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "08",
+         total = total * 1000000)
+
+CCAA_09 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 11, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "09",
+         total = total * 1000000)
+
+CCAA_10 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 18, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "10",
+         total = total * 1000000)
+
+CCAA_11 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 12, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "11",
+         total = total * 1000000)
+
+CCAA_12 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 13, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "12",
+         total = total * 1000000)
+
+CCAA_13 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 14, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "13",
+         total = total * 1000000)
+
+CCAA_14 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 15, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "14",
+         total = total * 1000000)
+
+CCAA_15 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 16, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "15",
+         total = total * 1000000)
+
+CCAA_16 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 19, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "16",
+         total = total * 1000000)
+
+CCAA_17 <- 
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 17, skip = 6) |>
+  rename(total = "\r\nTOTAL") |> 
+  filter(...2 == "GASTO TOTAL") |>  
+  select(...2, total) |> 
+  rename(CODAUTO = ...2) |> 
+  mutate(CODAUTO = "17",
+         total = total * 1000000)
+
+spending_CCAA_objects <- mget(ls(pattern = "^CCAA"))
+spending_CCAA <- do.call(rbind, spending_CCAA_objects)
+```
+
+Reading CCAA 2022 population data to calculate spending per inhabitant Data from: https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html
+
+```{r}
+pop_CCAA <- 
+  read_excel("Data_2020/pop_CCAA_2020.xlsx", skip = 4) |> 
+  filter(...1 != "ESPAÑA",
+         str_detect(substr(...1, 1, 2), "^[A-Z]+$")) |> 
+  mutate(CODAUTO = row_number()) |> 
+  select(...1, CODAUTO, "2020") |> 
+  rename(pop_2020 = "2020") |> 
+  mutate(CODAUTO = as.character(ifelse(nchar(CODAUTO) == 1, paste0("0", CODAUTO), CODAUTO)))
+```
+
+Merging spending data and population data
+
+```{r}
+spending_CCAA_final <- 
+  spending_CCAA |> 
+  left_join(pop_CCAA, by = "CODAUTO") |> 
+  mutate(per_capita_CCAA = total/pop_2020) |> 
+  rename(total_CCAA = total) |> 
+  select(CODAUTO, per_capita_CCAA, total_CCAA)
+```
+
+## Contracts
+
+Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
+
+Manually changed data type to xlsx because csv did not work
+
+-   creating new jobs / new employment
+
+```{r}
+contracts <- 
+  read_xlsx("Data_2020/Contratos_por_municipios_2020.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Contratos_total = "Total Contratos") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total))) |> 
+  group_by(INE) |> 
+  summarise(contracts_mean_2020 = mean(Contratos_total))
+```
+
+## Distance From Provincial Capital
+
+Adding distance from provincial capital for proxy for inter-municipal mobility
+
+Code provided by Villamil
+
+```{r}
+source("distcap.R")
+```
+
+Changing data type of and adding a 0 in front of every INE code that only has 4 characters to standardize and render the code applicable.
+
+```{r}
+dist_cap <- 
+  dist_cap |> 
+  mutate(INE = as.character(INE)) |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE))
+```
+
+## Population statistic
+
+### Age groups
+
+<https://www.ine.es/jaxiT3/Tabla.htm?t=33571&L=0>
+
+```{r}
+population <- 
+  read_excel("Data_2020/pop_mun_2020.xlsx", skip = 7, col_names = TRUE) |> 
+  rename(municipio = ...1) 
+
+population <- 
+  population |> 
+  filter(municipio == "1 de enero de 2020" | lead(municipio) == "1 de enero de 2022") |> 
+  mutate(across(.cols = -municipio, .fns = lead)) |> 
+  dplyr::slice(-n()) |> 
+  filter(municipio != "1 de enero de 2020") |>
+  mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  select(INE, "Todas las edades...2", "Menos de 16 años...3", "De 16 a 64 años...4", "65 y más años...5", "Todas las edades...10") |> 
+  rename("pop_total" = "Todas las edades...2",
+        "pop_below_16" = "Menos de 16 años...3",
+        "pop_16_64" = "De 16 a 64 años...4",
+        "pop_above_65" = "65 y más años...5",
+        "pop_foreigners" = "Todas las edades...10") |> 
+  mutate(pop_share_foreigners = (pop_foreigners/pop_total)*100,
+         pop_share_wk_age = (pop_16_64/pop_total)*100,
+         pop_share_retirees = (pop_above_65/pop_total)*100,
+         pop_share_youth = (pop_below_16/pop_total)*100) |> 
+  select(INE, pop_share_foreigners, pop_share_wk_age, pop_share_retirees, pop_share_youth, pop_total)
+
+# the population table stores values for Men and Women in rows rather than columns
+# grouping by municipality and only choosing highest total population
+
+population <- 
+  population |> 
+  group_by(INE) |> 
+  slice_max(order_by = !!sym("pop_total"), n = 1) |> 
+  ungroup() 
+```
+
+```{r}
+population_national <- 
+  population |>
+  filter(INE == "Total") |> 
+  mutate(INE = "00") |> 
+  rename(CODAUTO = INE)
+```
+
+Creating data frame only with municipalities
+
+Adding dummy variable greater than 20,000
+
+```{r}
+population <- 
+  population |> 
+  filter(INE != "Total") |> 
+  drop_na() |> 
+  mutate(greater_20k = as.character(if_else(pop_total > 20000, 1, 0)))
+```
+
+### Average age
+
+-   ready made data only available for 2021
+
+```{r, eval=FALSE}
+avg_age_raw <- 
+  read_excel("Data_2020/avg_age_2020.xlsx", skip = 6)
+
+avg_age_clean <- 
+  avg_age_raw |>
+  select(-"Todas las edades") |> 
+  rename(municipio = ...1) |> 
+  rename_with(~ if_else(. == "municipio", ., gsub("\\D", "", .)), everything()) |> 
+  filter(municipio == "1 de enero de 2020" | lead(municipio) == "1 de enero de 2022") |> 
+  mutate(across(.cols = -municipio, .fns = lead)) |> 
+  slice(-n()) |> 
+  filter(municipio != "1 de enero de 2020" & municipio != "Total Nacional") |> 
+  group_by(municipio) |> 
+  slice(1) |> 
+  ungroup()
+
+weighted_sum_age <-
+  avg_age_clean |>
+  pivot_longer(cols = 2:102, names_to = "age") |> 
+  mutate(age = as.numeric(age)) |> 
+  mutate(weighted_age = age * value) |> 
+  group_by(municipio) |> 
+  summarize(weighted_sum = sum(weighted_age)) |> 
+  ungroup()
+
+
+total_n_people <-
+  avg_age_clean |>
+  pivot_longer(cols = 2:102, names_to = "age") |> 
+  group_by(municipio) |> 
+  summarize(total_people = sum(value)) |> 
+  ungroup()
+
+avg_age_final <- 
+  weighted_sum_age |> 
+  inner_join(total_n_people, by = "municipio") |> 
+  mutate(average_age = weighted_sum / total_people) |> 
+  mutate(MUNICIPIO = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  select(INE, average_age)
+```
+
+```{r, eval=FALSE}
+write.csv(avg_age_final, "Data_2020/avg_age_final.csv")
+```
+
+```{r}
+avg_age_final <- read.csv("Data_2020/avg_age_final.csv", colClasses = c(INE = "character")) |> 
+  select (-X)
+```
+
+## Number of firms
+
+<https://www.ine.es/jaxiT3/Tabla.htm?t=4721&L=0>
+
+Warning message because of notation in original table of 0 as ".".
+
+```{r}
+n_firms <- 
+  read_excel("Data_2020/n_firms_total.xlsx", skip = 7, col_names = TRUE) |> 
+  rename(municipio = ...1,
+         n_firms = "2020") |>
+  drop_na() |> # dropping end of table
+  mutate(n_firms = as.numeric(n_firms),
+         municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(n_firms = ifelse(is.na(n_firms), 0, n_firms)) |> 
+  select(-NOMBRE)
+```
+
+## Target - Difference in unemployment rate
+
+Calculating the average monthly difference in unemployment between 2023 and 2022
+
+Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+
+Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
+
+### 2021
+
+```{r}
+unemployment_2021 <- 
+  read_xlsx("Data_2020/Paro_por_municipios_2021.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "Municipio", "total Paro Registrado") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+```{r}
+# Setting the directory path where csv files are located
+folder_path <- "Data_2020/SS_2021"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 1)
+  
+  # Add a new column 'mes' with the value of i
+  data$mes <- i
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+# Combine all data frames into one if needed
+social_security_2021 <- do.call(rbind, all_data)
+
+social_security_2021 <- 
+  social_security_2021 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, TOTAL_SS, mes) |> 
+  drop_na(TOTAL_SS) |> 
+  mutate(mes = case_when(mes == 1 ~ "Enero de 2021",
+                         mes == 2 ~ "Febrero de 2021",
+                         mes == 3 ~ "Marzo de 2021",
+                         mes == 4 ~ "Abril de 2021",
+                         mes == 5 ~ "Mayo de 2021",
+                         mes == 6 ~ "Junio de 2021",
+                         mes == 7 ~ "Julio de 2021",
+                         mes == 8 ~ "Agosto de 2021",
+                         mes == 9 ~ "Septiembre de 2021",
+                         mes == 10 ~ "Octubre de 2021",
+                         mes == 11 ~ "Noviembre de 2021",
+                         mes == 12 ~ "Diciembre de 2021"))
+```
+
+```{r}
+unemployment_2021_monthly <- 
+  unemployment_2021 |> 
+  left_join(social_security_2021, by = c("INE", "mes")) |> 
+  mutate(ue_mes_2021 = (Paro_total / (Paro_total + TOTAL_SS))*100) |> 
+  select(mes, INE, ue_mes_2021)|> 
+  mutate(mes = str_extract(mes, "^\\w+"))
+```
+
+### 2020
+
+```{r}
+unemployment_2020 <- 
+  read_xlsx("Data_2020/Paro_por_municipios_2020.xlsx", skip = 1) |> 
+  select("mes", "Codigo Municipio", "total Paro Registrado") |> 
+  rename(INE = "Codigo Municipio",
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+Adding the month of december
+
+<https://www.sepe.es/HomeSepe/que-es-el-sepe/estadisticas/datos-estadisticos/municipios/2020/diciembre.html>
+
+```{r}
+# Setting the directory path where csv files are located
+folder_path <- "Data_2020/paro_diciembre_2020"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 6) |> 
+  select("...1", "...3") |> 
+  rename(INE = "...1",
+         Paro_total = "...3") |> 
+  mutate(mes = "Diciembre de 2020",
+         INE = as.character(INE),
+         INE = if_else(nchar(INE) == 4, paste0("0", INE), INE)) |> 
+  drop_na()
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+unemployment_2020_dec <- do.call(rbind, all_data)
+
+# rbind to unemployment data
+unemployment_2020 <- rbind(unemployment_2020, unemployment_2020_dec)
+```
+
+Getting number of people in social security
+
+```{r, results='hide'}
+# Setting the directory path where csv files are located
+folder_path <- "Data_2020/SS_2020"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data_2020 <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 1)
+  
+  # Add a new column 'mes' with the value of i
+  data$mes <- i
+  
+  # Append the data frame to the list
+  all_data_2020[[length(all_data_2020) + 1]] <- data
+}
+
+# column name mistakes rendered this step necessary --> selecting columns for every data frame in the list
+for (i in seq_along(all_data_2020)) {
+  all_data_2020[[i]] <- all_data_2020[[i]][, c("mes", "TOTAL", "MUNICIPIO")]
+}
+
+# Combine all data frames into one if needed
+social_security_2020 <- do.call(rbind, all_data_2020)
+
+social_security_2020 <- 
+  social_security_2020 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, TOTAL_SS, mes) |> 
+  drop_na(TOTAL_SS, INE) |> 
+  mutate(mes = case_when(mes == 1 ~ "Enero de 2020",
+                         mes == 2 ~ "Febrero de 2020",
+                         mes == 3 ~ "Marzo de 2020",
+                         mes == 4 ~ "Abril de 2020",
+                         mes == 5 ~ "Mayo de 2020",
+                         mes == 6 ~ "Junio de 2020",
+                         mes == 7 ~ "Julio de 2020",
+                         mes == 8 ~ "Agosto de 2020",
+                         mes == 9 ~ "Septiembre de 2020",
+                         mes == 10 ~ "Octubre de 2020",
+                         mes == 11 ~ "Noviembre de 2020",
+                         mes == 12 ~ "Diciembre de 2020"))
+# warning for rows that do not have an INE --> so no problem
+```
+
+```{r}
+unemployment_2020_monthly <- 
+  unemployment_2020 |> 
+  left_join(social_security_2020, by = c("INE", "mes")) |> 
+  mutate(ue_mes_2020 = (Paro_total / (Paro_total + TOTAL_SS))*100) |> 
+  select(mes, INE, ue_mes_2020) |> 
+  mutate(mes = str_extract(mes, "^\\w+"))
+```
+
+### Difference
+
+Problem: no December 2020 data available
+
+```{r}
+target <- 
+  unemployment_2021_monthly |> 
+  left_join(unemployment_2020_monthly, by = c("INE", "mes")) |> 
+  mutate(target = ue_mes_2021 - ue_mes_2020) |> 
+  group_by(INE) |> 
+  summarise(target = mean(target, na.rm = T))
+```
+
+## Unemployment rate (2020)
+
+2020 data for unemployment
+
+Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
+
+Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
+
+Unemployment = Paro / Paro + Social Security
+
+```{r}
+unemployment_rate_2020 <- 
+  read_xlsx("Data_2020/Paro_por_municipios_2020.xlsx", skip = 1) |> 
+  select("Codigo Municipio", "Municipio", "total Paro Registrado") |> 
+  rename(INE = "Codigo Municipio",
+         NOMBRE = Municipio,
+         Paro_total = "total Paro Registrado") |> 
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+```
+
+Adding december data
+
+```{r}
+folder_path <- "Data_2020/paro_diciembre_2020"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (i in seq_along(excel_files)) {
+  file <- excel_files[i]
+  
+  data <- read_excel(file, skip = 6) |> 
+  select("...1", "...2","...3") |> 
+  rename(INE = "...1",
+         NOMBRE = "...2",
+         Paro_total = "...3") |> 
+  mutate(INE = as.character(INE),
+         INE = if_else(nchar(INE) == 4, paste0("0", INE), INE)) |> 
+  drop_na()
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+unemployment_2020_dec <- do.call(rbind, all_data)
+
+# rbind to unemployment data
+unemployment_rate_2020 <- rbind(unemployment_rate_2020, unemployment_2020_dec)
+```
+
+Social Security data for active population
+
+Reading data
+
+```{r, results='hide'}
+# Setting the directory path where csv files are located
+folder_path <- "Data_2020/SS_2020"
+
+# Getting a list of csv files in the folder
+excel_files <- list.files(folder_path, full.names = TRUE)
+
+# Initializing an empty list to store data frames
+all_data <- list()
+
+# Looping through each csv file and read it into a data frame
+for (file in excel_files) {
+
+  data <- read_excel(file, skip = 1)
+  
+  # Append the data frame to the list
+  all_data[[length(all_data) + 1]] <- data
+}
+
+# column name mistakes rendered this step necessary --> selecting columns for every data frame in the list
+for (i in seq_along(all_data)) {
+  all_data[[i]] <- all_data[[i]][, c("TOTAL", "MUNICIPIO")]
+}
+
+# Combine all data frames into a single object
+social_security_2020 <- bind_rows(all_data)
+```
+
+Wrangling data
+
+```{r}
+social_security_2020 <- 
+  social_security_2020 |> 
+  mutate(MUNICIPIO = str_replace(MUNICIPIO, "^(\\S+) ", "\\1_")) |> 
+  separate(MUNICIPIO, into = c("INE", "NOMBRE"), sep = "_") |> 
+  mutate(TOTAL_SS = gsub("\\.", "", TOTAL)) |> # deleting dots
+  mutate(TOTAL_SS = as.numeric(str_extract(TOTAL_SS, "\\d+"))) |>  # extracting only the numbers
+  select(INE, NOMBRE, TOTAL_SS) |> 
+  drop_na(TOTAL_SS) |> 
+  group_by(INE) |> 
+  summarise(mean_ss = mean(TOTAL_SS, rm.na = T)) |> 
+  ungroup()
+```
+
+Merging with unemployment table
+
+```{r}
+unemployment_rate_2020 <- 
+  unemployment_rate_2020 |> 
+  group_by(INE, NOMBRE) |> 
+  summarise(mean_ue = mean(Paro_total)) |> 
+  ungroup() |> 
+  left_join(social_security_2020, by = "INE") |> 
+  select(INE, NOMBRE, mean_ue, mean_ss) |> 
+  mutate(ue_pct_2020 = (mean_ue/(mean_ue + mean_ss))*100) |> 
+  drop_na()
+```
+
+```{r}
+unemployment_rate_2020 |> 
+  summarise(ue = sum(mean_ue), ss = sum(mean_ss)) |>
+  mutate(ue_pct = (ue/(ue + ss))*100)
+```
+
+Divergence of 1%
+
+```{r}
+unemployment_rate_2020 <- 
+  unemployment_rate_2020 |> 
+  select(INE, ue_pct_2020)
+```
+
+## Target II - Income
+
+choosing median income by consumption unit
+
+--\> there are some NA values
+
+```{r}
+median_income <- 
+  read_excel("Data/income_2021.xlsx", skip = 7) |> 
+  select(...1, "2021...23") |> 
+  rename(municipio = ...1,
+         median_inc_con_unit = "2021...23") |> 
+  mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  filter(nchar(INE) == 5) |> 
+  mutate(median_inc_con_unit = as.numeric(median_inc_con_unit)) |> 
+  select(-NOMBRE)
+```
+
+## Political leadership
+
+### Municipality - Party of mayor
+
+```{r}
+political_leadership_mun <- 
+  read_excel("Data/Alcaldes_Mandato_2019_2023.xlsx", skip = 6) |> 
+  rename(INE = "CÓDIGO INE",
+         party_mun = LISTA,
+         resignation_date = "FECHA BAJA") |> 
+  mutate(INE = substr(INE, 1, nchar(INE) - 1)) |> 
+  select(MUNICIPIO, INE, party_mun, "NOMBRE",resignation_date) |> 
+  group_by(INE) |> 
+  filter(if(all(is.na(resignation_date))) TRUE else if(any(!is.na(resignation_date) & resignation_date < as.Date("2022-01-01"))) row_number() == max(which(resignation_date < as.Date("2022-01-01"))) + 1 else row_number() == 1) |> # if resignation is NA then keep the row, else if the row is not NA and the resignation date is before 2022-01-01 it chooses the row number where the resignation date is closest below 2022-01-01 and selects the row +1. This effectively chooses the row of the mayor who assumed his position before 2022-01-01. If the resignation date is not before 2022-01-01 then the first row is chosen.
+  select(INE, party_mun)
+```
+
+### CCAA
+
+From: https://es.wikipedia.org/wiki/Anexo:Presidencias_auton%C3%B3micas_espa%C3%B1olas
+
+Code from https://www.ine.es/daco/daco42/codmun/cod_ccaa.htm
+
+Using datapasta
+
+```{r}
+
+code_CCAA <-
+  tibble::tribble(
+  ~Código,                      ~Literal,
+     "01",                   "Andalucía",
+     "02",                      "Aragón",
+     "03",     "Asturias, Principado de",
+     "04",              "Balears, Illes",
+     "05",                    "Canarias",
+     "06",                   "Cantabria",
+     "07",             "Castilla y León",
+     "08",        "Castilla - La Mancha",
+     "09",                    "Cataluña",
+     "10",        "Comunitat Valenciana",
+     "11",                 "Extremadura",
+     "12",                     "Galicia",
+     "13",        "Madrid, Comunidad de",
+     "14",           "Murcia, Región de",
+     "15", "Navarra, Comunidad Foral de",
+     "16",                  "País Vasco",
+     "17",                   "Rioja, La",
+     "18",                       "Ceuta",
+     "19",                     "Melilla"
+  )
+
+
+
+political_leadership_CCAA <- 
+  tibble::tribble(
+   ~CCAA,                ~President,     ~Start,      ~End,  ~Duration,  ~Party,
+  "Andalucía",            "Juan Manuel Moreno",      "18 de enero de 2019",              "en el cargo",   "5 años y 94 días",   "PP",
+  "Aragón",                 "Javier Lambán",       "5 de enero de 2015",     "10 de agosto de 2023",  "8 años y 217 días", "PSOE",
+  "Asturias, Principado de",             "Adrián Barbón",  "20 de julio de 2019",          "en el cargo",  "4 años y 276 días", "PSOE",
+  "Balears, Illes", "Francina Armengol",   "2 de julio de 2015", "19 de junio de 2023", "7 años y 352 días", "PSOE",
+  "Canarias", "Ángel Víctor Torres", "16 de julio de 2019",  "14 de julio de 2023", "3 años y 363 días", "PSOE",
+  "Cantabria", "Miguel Ángel Revilla (2º)",   "7 de julio de 2015",  "5 de julio de 2023", "7 años y 363 días", "PRC",
+  "Castilla - La Mancha", "Emiliano García-Page", "4 de julio de 2015", "en el cargo", "8 años y 292 días", "PSOE",
+  "Castilla y León", "Alfonso Fernández Mañueco",  "12 de julio de 2019",          "en el cargo",   "4 años y 284 días", "PP",
+  "Cataluña", "Pere Aragonès", "30 de septiembre de 2020",               "en el cargo",  "3 años y 204 días",  "ERC",
+  "Ceuta", "Juan.Jesús.Vivas", "6.de.febrero.de.2001",         "en.el.cargo", "23.años.y.106.días",    "PP",
+  "Comunitat.Valenciana",     "Ximo.Puig", "28.de.junio.de.2015", "13.de.julio.de.2023", "8.años.y.15.días", "PSOE",
+  "Extremadura", "Guillermo Fernández Vara (2º)",  "7 de julio de 2015",  "14 de julio de 2023",    "8 años y 7 días", "PSOE",
+  "Galicia", "Alfonso Rueda Valenzuela",   "14 de mayo de 2022",         "en el cargo",   "1 año y 343 días", "PP",
+  "Rioja, La",         "Concha Andreu", "27 de agosto de 2019",   "30 de junio de 2023", "3 años y 307 días", "PSOE",
+  "Madrid, Comunidad.de",  "Isabel.Díaz.Ayuso", "19.de.agosto.de.2019",         "en.el.cargo", "4.años.y.251.días",  "PP",
+  "Melilla",	"Eduardo.de.Castro", "15.de.junio.de.2019",	"7.de.julio.de.2023",	"4.años.y.22.días", "Cs",
+   "Murcia, Región de", "Fernando López Miras", "3 de mayo de 2017", "en el cargo", "6 años y 354 días", "PP",
+  "Navarra, Comunidad Foral de", "María Chivite",  "6 de agosto de 2019",          "en el cargo", "4 años y 259 días", "PSOE",
+  "País Vasco", "Iñigo Urkullu", "15 de diciembre de 2012",              "en el cargo", "11 años y 128 días", "PNV"
+  )
+
+political_leadership_CCAA <- 
+  political_leadership_CCAA |> 
+  mutate(across(c(CCAA, President, Start, End, Duration, Party), ~gsub("\\.", " ", .))) |> left_join(code_CCAA, by = c("CCAA" = "Literal")) |> 
+  select(CCAA, Party, Código) |> 
+  rename(party_ccaa = Party,
+         CODAUTO = Código)
+```
+
+## Tax codes
+
+Taxation levied by municipalities
+
+https://serviciostelematicosext.hacienda.gob.es/SGFAL/ConsultaTipos/aspx/listado_municipiosm.aspx
+
+
+
+Getting property taxes based on type of property, construction work taxes, turnover weights
+
+```{r}
+tax_rates_2020 <- 
+  read_excel("Data_2020/mun_tax_2020.xlsx", skip = 2) |> 
+  rename(INE = "CCAA-Prov-Ayto",
+         urban_prop_tax = "Urbana",
+         rural_prop_tax = "Rústica",
+         special_prop_tax = "Caract. Esp.",
+         cons_work_tax = "Tipo Gravamen",
+         max_coef_turn_tax = "Coef situación max",
+         min_coef_turn_tax = "Coef situación min") |> 
+  mutate(INE = str_replace_all(INE, "(\\d{2})-(\\d{2})-(\\d{3})", "\\2\\3")) |> 
+  select(INE, urban_prop_tax, rural_prop_tax, special_prop_tax, max_coef_turn_tax, min_coef_turn_tax)
+```
+
+
+## List of useful dataframes
+
+```{r}
+objects <- ls()
+object_to_keep <- c("df_spen_imp_mun_tidy",
+                    "target",
+                    "unemployment_rate_2020",
+                    "population", 
+                    "n_firms", 
+                    "dist_cap",
+                    "avg_age_final",
+                    "contracts",
+                    "political_leadership_CCAA",
+                    "political_leadership_mun",
+                    "spending_CCAA_final",
+                    "median_income",
+                    "tax_rates_2020")
+objects_to_remove <- setdiff(objects, object_to_keep)
+rm(list = objects_to_remove)
+```
+
+## Merging tables
+
+-   also adding per capita spending municipality
+
+```{r}
+df <- 
+  df_spen_imp_mun_tidy |> 
+  left_join(dist_cap, by =  "INE") |> 
+  left_join(unemployment_rate_2020, by = "INE") |> 
+  left_join(target, by = "INE") |> 
+  left_join(population, by = "INE") |> 
+  left_join(n_firms, by = "INE") |> 
+  left_join(avg_age_final, by = "INE") |> 
+  left_join(contracts, by = "INE") |> 
+  left_join(political_leadership_mun, by = "INE") |> 
+  left_join(median_income, by = "INE") |> 
+  left_join(tax_rates_2020, by = "INE") |> 
+  left_join(political_leadership_CCAA, by = "CODAUTO") |> 
+  left_join(spending_CCAA_final, by = "CODAUTO") 
+```
+
+## Creating variables
+
+### Per capita values
+
+```{r}
+df <- 
+  df |>
+  mutate(per_capita_MUN = total_MUN/pop_total,
+         pop_density = pop_total/ area_sqkm,
+         per_capita_contracts = contracts_mean_2020/pop_total,
+         n_firms = as.numeric(n_firms))
+```
+
+### Renaming fields of expenditure
+
+```{r}
+df <- 
+  df |> 
+  relocate(party_mun, .after = NOMBRE) |> 
+  relocate(c(CCAA, party_ccaa), .after = CODAUTO) |> 
+  relocate(per_capita_MUN, .after = total_MUN) |> 
+  relocate(greater_20k, .after = pop_total) |> 
+  relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN) |> 
+  rename(employment_promotion = "Fomento del Empleo",
+         general_services = "Servicios de carácter general",
+         pub_safety_mobility = "Seguridad y movilidad ciudadana",
+         housing_urban_plan = "Vivienda y urbanismo",
+         community_wellbeing = "Bienestar comunitario",
+         environment = "Medio ambiente",
+         culture = "Cultura",
+         tax_fin_admin = "Administración financiera y tributaria",
+         public_debt = "Deuda Pública",
+         health = "Sanidad",
+         education = "Educación",
+         infrastructure = "Infraestructuras",
+         employee_benefits = "Otras prestaciones económicas a favor de empleados",
+         social_services = "Servicios Sociales y promoción social",
+         business_turism_sme = "Comercio, turismo y pequeñas y medianas empresas",
+         economic_expen_other = "Comercio, turismo y pequeñas y medianas empresas",
+         gov_bodies = "Órganos de gobierno",
+         sports = "Deporte",
+         industry_eng = "Industria y energía",
+         pub_transportation = "Transporte público",
+         r_and_d = "Investigación, desarrollo e innovación",
+         trans_public_agencies = "Transferencias a otras Administraciones Públicas",
+         agr_farm_fish = "Agricultura, Ganadería y Pesca",
+         pensions = "Pensiones",
+         other_econ = "Otras actuaciones de carácter económico") |> 
+  mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA),
+         per_capita_CCAA = if_else(CCAA == "Melilla", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
+  mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_MUN),
+         total_CCAA = if_else(CCAA == "Melilla", total_MUN, total_MUN))
+```
+
+```{r}
+df_final <- 
+  df |> 
+  filter(!is.na(target)) |> 
+  filter(!is.na(median_inc_con_unit))
+```
+
+Saving data frame
+
+```{r}
+write.csv(df_final, paste("Data_2020/TFM_data_", Sys.Date(), ".csv", sep = ""))
+```
