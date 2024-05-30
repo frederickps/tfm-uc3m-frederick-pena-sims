@@ -25,7 +25,7 @@ library(xgboost)
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data_2020/TFM_data_2024-05-28.csv", colClasses = c(INE = "character")) |> 
+df_final <- read.csv("Data_2020/TFM_data_2024-05-30.csv", colClasses = c(INE = "character")) |> 
   select(-X)
 ```
 
@@ -95,9 +95,9 @@ mean_normalize <- function(x) {
 }
 
 # Apply mean normalization to each column
-X <- X %>% mutate(across(everything(), mean_normalize))
+X <- X |>  mutate(across(everything(), mean_normalize))
 
-Z <- Z %>% mutate(across(everything(), mean_normalize))
+Z <- Z |>  mutate(across(everything(), mean_normalize))
 
 Y <- Y |> mutate(across(everything(), mean_normalize))
 
@@ -178,7 +178,7 @@ t_test_result <- t.test(greater_100k, smaller_100k)
 t_test_result
 ```
 
-## Finalizing data frame
+## Primary Model
 
 ### Variable selection
 
@@ -202,16 +202,6 @@ df_model_imp <-
   df_model_imp |> 
   filter(!is.na(party_mun))
 ```
-## Analysis - Robust
-
-### Distribution
-
-```{r}
-df_dea |> 
-  ggplot()+
-  geom_histogram(aes(dea_robust))
-```
-
 ### Correlation - robust
 
 ```{r}

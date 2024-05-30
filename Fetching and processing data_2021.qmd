@@ -827,9 +827,8 @@ Unemployment = Paro / Paro + Social Security
 ```{r}
 unemployment_rate_2020 <- 
   read_xlsx("Data_2020/Paro_por_municipios_2020.xlsx", skip = 1) |> 
-  select("Codigo Municipio", "Municipio", "total Paro Registrado") |> 
+  select("Codigo Municipio", "total Paro Registrado") |> 
   rename(INE = "Codigo Municipio",
-         NOMBRE = Municipio,
          Paro_total = "total Paro Registrado") |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
   mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
@@ -851,9 +850,8 @@ for (i in seq_along(excel_files)) {
   file <- excel_files[i]
   
   data <- read_excel(file, skip = 6) |> 
-  select("...1", "...2","...3") |> 
+  select("...1", "...3") |> 
   rename(INE = "...1",
-         NOMBRE = "...2",
          Paro_total = "...3") |> 
   mutate(INE = as.character(INE),
          INE = if_else(nchar(INE) == 4, paste0("0", INE), INE)) |> 
@@ -922,11 +920,11 @@ Merging with unemployment table
 ```{r}
 unemployment_rate_2020 <- 
   unemployment_rate_2020 |> 
-  group_by(INE, NOMBRE) |> 
+  group_by(INE) |> 
   summarise(mean_ue = mean(Paro_total)) |> 
   ungroup() |> 
   left_join(social_security_2020, by = "INE") |> 
-  select(INE, NOMBRE, mean_ue, mean_ss) |> 
+  select(INE, mean_ue, mean_ss) |> 
   mutate(ue_pct_2020 = (mean_ue/(mean_ue + mean_ss))*100) |> 
   drop_na()
 ```
