@@ -20,12 +20,16 @@ library(rDEA)
 library(caret)
 library(mice)
 library(xgboost)
+library(mapSpain)
+library(kernelshap)
+library(shapviz)
+library(pdp)
 ```
 
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data_2020/TFM_data_2024-05-30.csv", colClasses = c(INE = "character")) |> 
+df_final <- read.csv("Data_2020/TFM_data_2024-05-31.csv", colClasses = c(INE = "character")) |> 
   select(-X)
 ```
 
@@ -125,7 +129,7 @@ df_dea <-
 ```{r}
 df_dea |> 
   ggplot()+
-  geom_histogram(aes(dea_robust))
+  geom_histogram(aes(dea_robust), stat = "bin", bins = 160)
 ```
 
 #### Most efficient municipalities
@@ -137,15 +141,8 @@ df_dea |>
 ```
 
 ```{r}
-df_efficient <- 
-  df_dea |> 
+df_dea |> 
   filter(dea_robust == 1)
-  
-df_efficient |> 
-  count(CCAA)
-
-df_efficient |> 
-  count(greater_20k)
 ```
 
 #### Mean efficiency score
@@ -154,7 +151,7 @@ df_efficient |>
 mean(df_dea$dea_robust)
 ```
 
-8476198
+7808061
 
 #### t-test between city sizes
 
@@ -167,7 +164,7 @@ t_test_result <- t.test(greater_20k, smaller_20k)
 t_test_result
 ```
 
-The mean DEA efficiency score for observations where "greater_20k" is 1 is 0.8735019, while the mean DEA efficiency score for observations where "greater_20k" is 0 is 0.8460489.
+Smaller municipalities are more efficient
 
 ```{r}
 greater_100k <- df_dea[df_dea$pop_total > 100000, "dea_robust"]
@@ -178,7 +175,9 @@ t_test_result <- t.test(greater_100k, smaller_100k)
 t_test_result
 ```
 
-## Primary Model
+a bit more pronounced 
+
+## Feature Selection and Engineering 
 
 ### Variable selection
 
@@ -187,8 +186,20 @@ All variables without additional meaning and variables used in estimating effici
 ```{r}
 df_model <- 
   df_dea |> 
-  select(-c(INE, NOMBRE, CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, contracts_mean_2020, median_inc_con_unit))
+  select(-c(CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, contracts_mean_2020, median_inc_con_unit))
 ```
+
+
+```{r}
+df_model <- 
+  df_model |> 
+  mutate(
+    party_mun = as.factor(party_mun),
+    party_ccaa = as.factor(party_ccaa),
+    greater_20k = as.factor(greater_20k)
+  )
+```
+
 
 ### Data imputation
 
@@ -205,14 +216,8 @@ df_model_imp <-
 ### Correlation - robust
 
 ```{r}
-df_model_robust <- 
-  df_model_imp |> 
-  select(-dea_naive)
-
-
-df_model_robust <-
-  df_model_robust |> 
-  drop_na()
+df_model_robust <- df_model_imp |> 
+  select(-INE, -NOMBRE)
 ```
 
 ```{r}
@@ -227,7 +232,7 @@ corr<-round(corr,4)
 df_corr_results <- 
   data.frame(corr) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:32,
+               cols = 1:39,
                names_to = "variable")
 
 ggplot(df_corr_results, aes(x = variable, y = correlation)) +
@@ -261,12 +266,12 @@ non_zero_vars
 ```
 
 ```{r}
-non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")]
+non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
 
 
 df_model_final <- 
-  df_model_robust |> 
-  dplyr::select(all_of(non_zero_vars), dea_robust, greater_20k, party_mun, party_ccaa)
+  df_model_imp |> ## to include INE and NOMBRE again
+  dplyr::select(all_of(non_zero_vars), dea_robust, greater_20k, party_mun, party_ccaa, INE, NOMBRE)
 # excluded party ccaa and party mun for the moment
 ```
 
@@ -275,12 +280,6 @@ df_model_final <-
 #### Training and testing
 
 ```{r}
-df_model_final <- df_model_final %>%
-  mutate(
-    party_mun = as.factor(party_mun),
-    party_ccaa = as.factor(party_ccaa)
-  )
-
 set.seed(123)  
 training.samples <-
   df_model_final$dea_robust |> 
@@ -288,6 +287,10 @@ training.samples <-
 
 train.data  <- df_model_final[training.samples, ]
 test.data <- df_model_final[-training.samples, ] 
+
+# deleting INE and NOMBRE from train set to keep in test only
+train.data$INE <- NULL
+train.data$NOMBRE <- NULL
 ```
 
 #### Random forest
@@ -308,17 +311,19 @@ rf_tune$finalModel$importance
 rf_tune$results
 
 varImp(rf_tune)
+
+plot(varImp(rf_tune))
 ```
 
 ##### Highest
 
 target + median_inc_con_unit
 
-0.54529
+0.5851483
 
 MAE
 
-0.034315
+0.03638562
 
 target + median_inc_con_unit (excluding ue_pct_2020)
 
@@ -344,6 +349,205 @@ qplot(test_results$rf, test_results$dea_robust) +
   geom_abline(intercept = 0, slope = 1, colour = "blue") +
   theme_bw()
 ```
+
+### MAE Investigation
+
+```{r}
+# Calculate the Mean Absolute Error (MAE) for each observation
+mae_per_observation <- abs(test_results$rf - test_results$dea_robust)
+
+# Add the MAE to the corresponding observations in the original data frame (df_dea)
+test.data$MAE <- mae_per_observation
+```
+
+
+```{r}
+df_mae <- 
+  test.data |> 
+  select(INE, NOMBRE, MAE) |> 
+  left_join(df_dea, by = c("INE", "NOMBRE")) |> 
+  drop_na()
+```
+
+#### PDP 
+
+```{r}
+partial(rf_tune$finalModel, pred.var = "ue_pct_2020", plot = TRUE, rug = T, train = train.data)
+autoplot(pdp_rf) +
+  labs(title = "Partial Dependence Plot", x = "Feature Name", y = "Predicted Outcome") +
+  theme_minimal()
+
+?partial
+```
+
+#### SHAP
+
+Importance Bee Plot
+```{r}
+X <- train.data[sample(nrow(train.data), 1000), -which(names(train.data) == "dea_robust")]
+bg_X <- train.data[sample(nrow(train.data), 100), -which(names(train.data) == "dea_robust")]
+
+s <- kernelshap(rf_tune, X = X, bg_X = bg_X) 
+sv <- shapviz(s)
+sv_importance(sv, kind = "bee", max_display = Inf)
+```
+
+Dependence
+```{r}
+v_select_1 <- c("per_capita_contracts", "pop_density", "pop_share_wk_age", "area_sqkm", "rural_prop_tax", "social_services", "employment_promotion", "party_mun")
+sv_dependence(sv, v = v_select_1)
+```
+
+
+
+
+Backup
+```{r}
+library(iml)
+# Create a predictor object
+predictor <- Predictor$new(rf_tune, data = train.data, y = train.data$dea_robust)
+
+# Compute SHAP values
+shapley <- Shapley$new(predictor, x.interest = train.data[1, ])  # Example for first observation
+shapley$plot()
+```
+
+#### Correlation Analysis
+
+```{r}
+df_corr_mae <-
+  df_mae |> 
+  select_if(is.numeric) |> 
+  select(-MAE)
+
+corr_mae<- cor(df_mae$MAE, df_corr_mae)
+corr_mae<-round(corr_mae,4)
+
+df_corr_mae_results <- 
+  data.frame(corr_mae) |> 
+  pivot_longer(values_to = "correlation",
+               cols = 1:49,
+               names_to = "variable")
+
+ggplot(df_corr_mae_results, aes(x = variable, y = correlation)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Correlation with absolute error", x = "Variable", y = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
+```
+
+##### dea_robust variable
+
+```{r}
+df_mae |> 
+  ggplot()+
+  geom_point(aes(x = dea_robust, y = MAE)) +
+  theme_minimal()
+```
+
+##### Mapping MAE
+
+```{r}
+esp_can <- esp_get_country() 
+can_prov <- esp_get_can_provinces()
+can_box <- esp_get_can_box() 
+munic <- esp_get_munic() 
+
+munic <-    
+  munic |>  
+  rename(INE = LAU_CODE)
+
+df_mae_map <- munic |> 
+  left_join(df_mae, by = "INE")  
+
+ggplot(esp_can) +
+  geom_sf() +
+  geom_sf(data = can_prov) +
+  geom_sf(data = can_box) + 
+  geom_sf(data = df_mae_map, aes(fill = MAE), color = "black", size = .5)+
+  scale_fill_viridis_c(na.value = NA) +
+  theme_minimal()
+```
+No spatial relationship
+
+
+
+```{r}
+df_mae |> 
+  ggplot()+
+  geom_point(aes(x = area_sqkm, y = MAE)) +
+  theme_minimal()+
+    coord_cartesian(xlim = c(0, 300), ylim = c(0, 0.18))
+```
+
+```{r}
+ggplot(df_mae) +
+    geom_point(aes(x = pop_density, y = MAE)) +
+    theme_minimal() +
+    coord_cartesian(xlim = c(0, 90), ylim = c(0, 0.18))
+```
+
+
+```{r}
+ggplot(df_mae) +
+    geom_point(aes(x = pop_total, y = MAE)) +
+    theme_minimal() +
+    coord_cartesian(xlim = c(0, 500), ylim = c(0, 0.18))
+```
+
+```{r}
+ggplot(df_mae) +
+    geom_point(aes(x = culture, y = MAE)) +
+    theme_minimal() +
+    coord_cartesian(xlim = c(0, 40), ylim = c(0, 0.18))
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+df_mae |> 
+  arrange(desc(MAE))
+```
+
+
+
+
+## Building the Model
+
+### Adding features
+
+bivariat: 
+
+pop_density --> threshold:
+
+average_age --> threshold: 12
+
+area_sqkm --> trheshold: 60-70
+
+pop_total --> threshold: 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## END
 
 ```{r}
 

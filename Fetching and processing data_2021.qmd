@@ -57,7 +57,7 @@ Joining codigo municipio for official classification
 Creating common ID
 
 ```{r}
-codigo_municipio <- read_excel("Data/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
+codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
   mutate(INE = paste0(CPRO, CMUN),
          Provincia = as.integer(CPRO))
 
@@ -352,7 +352,7 @@ CCAA_11 <-
          total = total * 1000000)
 
 CCAA_12 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 13, skip = 6) |>
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 14, skip = 6) |>
   rename(total = "\r\nTOTAL") |> 
   filter(...2 == "GASTO TOTAL") |>  
   select(...2, total) |> 
@@ -361,7 +361,7 @@ CCAA_12 <-
          total = total * 1000000)
 
 CCAA_13 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 14, skip = 6) |>
+  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 13, skip = 6) |>
   rename(total = "\r\nTOTAL") |> 
   filter(...2 == "GASTO TOTAL") |>  
   select(...2, total) |> 
@@ -409,7 +409,7 @@ spending_CCAA_objects <- mget(ls(pattern = "^CCAA"))
 spending_CCAA <- do.call(rbind, spending_CCAA_objects)
 ```
 
-Reading CCAA 2022 population data to calculate spending per inhabitant Data from: https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html
+Reading CCAA 2020 population data to calculate spending per inhabitant Data from: https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html
 
 ```{r}
 pop_CCAA <- 
@@ -836,7 +836,7 @@ unemployment_rate_2020 <-
 
 Adding december data
 
-```{r}
+```{r, results='hide'}
 folder_path <- "Data_2020/paro_diciembre_2020"
 
 # Getting a list of csv files in the folder
@@ -949,9 +949,9 @@ choosing median income by consumption unit
 
 --\> there are some NA values
 
-```{r}
+```{r, results='hide'}
 median_income <- 
-  read_excel("Data/income_2021.xlsx", skip = 7) |> 
+  read_excel("Data_2020/income_2021.xlsx", skip = 7) |> 
   select(...1, "2021...23") |> 
   rename(municipio = ...1,
          median_inc_con_unit = "2021...23") |> 
@@ -968,7 +968,7 @@ median_income <-
 
 ```{r}
 political_leadership_mun <- 
-  read_excel("Data/Alcaldes_Mandato_2019_2023.xlsx", skip = 6) |> 
+  read_excel("Data_2020/Alcaldes_Mandato_2019_2023.xlsx", skip = 6) |> 
   rename(INE = "CÓDIGO INE",
          party_mun = LISTA,
          resignation_date = "FECHA BAJA") |> 
@@ -1164,8 +1164,8 @@ df <-
          other_econ = "Otras actuaciones de carácter económico") |> 
   mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA),
          per_capita_CCAA = if_else(CCAA == "Melilla", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
-  mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_MUN),
-         total_CCAA = if_else(CCAA == "Melilla", total_MUN, total_MUN))
+  mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_CCAA),
+         total_CCAA = if_else(CCAA == "Melilla", total_MUN, total_CCAA))
 ```
 
 ```{r}
