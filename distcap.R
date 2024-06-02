@@ -11,15 +11,15 @@ invisible(lapply(pkg, library, character.only = TRUE))
 ## DATA ------------------------------------
 
 # Load capitales provincia
-caps = read.csv("Data/provcapitals.csv") %>% 
+caps = read.csv("Data_2020/provcapitals.csv") %>% 
   select(prov_code, lat, long) %>% 
   st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
   st_transform(crs = 32630)
 
 
-shp <- st_read("Data/spatial/recintos_municipales_inspire_peninbal_etrs89.shp")
+shp <- st_read("Data_2020/spatial/recintos_municipales_inspire_peninbal_etrs89.shp")
 
-shp_1 <- st_read("Data/spatial/recintos_municipales_inspire_canarias_regcan95.shp")
+shp_1 <- st_read("Data_2020/spatial/recintos_municipales_inspire_canarias_regcan95.shp")
 
 shp_1 <- st_transform(shp_1, st_crs(shp))
 
@@ -47,5 +47,5 @@ for(p in unique(caps$prov_code)){
 
 dist_cap = shp %>% select(INE, dist_prov_cap, area_sqkm) %>%
   st_drop_geometry()
-write.csv(dist_cap, "Data/distcap.csv", row.names = FALSE)
+write.csv(dist_cap, "Data_2020/distcap.csv", row.names = FALSE)
 

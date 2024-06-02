@@ -20,7 +20,7 @@ library(readxl)
 library(DBI)
 ```
 
-## Getting municipal spending data
+## Municipal spending data
 
 Explain
 
@@ -48,13 +48,15 @@ tb_funcionalPorEntes <- dbReadTable(con, "v_funcionalPorEntes", colClasses = c(F
 tb_cuentasProgramas <- dbReadTable(con, "tb_cuentasProgramas")
 ```
 
-## Processing municipal spending data
+
 
 ### Applying official classification
 
 Joining codigo municipio for official classification
 
 Creating common ID
+
+Joining
 
 ```{r}
 codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
@@ -64,18 +66,14 @@ codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_nam
 tb_funcionalPorEntes <- 
   tb_funcionalPorEntes |>
   mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
-```
 
-Joining
-
-```{r}
 tb_funcionalPorMunicipios <- 
   tb_funcionalPorEntes |> 
   inner_join(codigo_municipio, by = "INE") |> 
   inner_join(tb_cuentasProgramas, by ="cdfgr")
 ```
 
-### Organizing spending data per municipality
+### Cleaning municipalities
 
 Standardizing codification and reducing number of spending reasons
 
@@ -84,7 +82,6 @@ Madrid <- tb_funcionalPorMunicipios |>
   arrange(poblacion) |> 
   slice_head(n = 30) |> 
   select(INE, cdfgr, importe, nombre)
-
 ```
 
 What variables do I want to have?
@@ -113,11 +110,15 @@ tb_funcionalPorMunicipios <-
          & NombreEnte == NOMBRE)
 ```
 
+### Adding total spending (per reason)
+
 Total spending per reason
 
 Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
 
 summarized spending contains one total amount spent per reason
+
+total importe contains the total money spent by the municipality in 2020
 
 ```{r}
 summarized_spending <- tb_funcionalPorMunicipios |> 
@@ -155,6 +156,7 @@ verification1 <-
 verification1
 ```
 
+### Calculating share of spending
 Now calculating the share of each spending
 
 ```{r}
@@ -247,6 +249,153 @@ ggsave("Data_2020/Plotting missing municipalities.png", bg = "white")
 
 ```{r}
 head(df_spen_imp_mun_tidy)
+```
+
+## Municipal revenue data
+
+```{r}
+tb_economicaPorEntes <- dbReadTable(con, "v_economicaPorEntes", colClasses = c(F, F, F, F, F, F, F, "character", F, F, F))
+
+tb_cuentasEconomica <- dbReadTable(con, "tb_cuentasEconomica")
+```
+
+follow roughly previous steps - on
+
+v_economicaPorEntes
+
+--> filter - tipreig == "I"
+
+--> only cdcta with 1 character 
+
+--> transfers and taxes per capita (maybe other) + total
+
+--> adding names of municipalities (for verification)
+
+### Applying offical classification
+
+codigo list for municipalitie and the respective 
+
+```{r}
+tb_economicaPorEntes <- 
+  tb_economicaPorEntes |> 
+  filter(tipreig == "I")|>
+  mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
+
+# keeping only Importe (revenue)
+tb_cuentasEconomica <- 
+  tb_cuentasEconomica |> 
+  filter(tipreig == "I") |> 
+  select(-tipreig)
+
+tb_economicaPorMunicipios <- 
+  tb_economicaPorEntes |> 
+  inner_join(codigo_municipio, by = "INE") |> 
+  inner_join(tb_cuentasEconomica, by ="cdcta")
+```
+
+### Cleaning  municipalities
+
+Standardizing codification and reducing number of spending reasons
+
+What variables do I want to have?
+
+Only codes with one character --> reason:
+
+- least fine-grained data needed --> total revenue and split up - revenue grants, revenue taxes, other
+
+Also, deleting all mancomunidades from the dataframe.
+
+Also deleting every Entidad de ámbito territorial inferior al municipio (EATIM)
+
+-   NOMBRE from codigo_municipio and NombreEnte form database
+
+```{r}
+tb_economicaPorMunicipios <- 
+  tb_economicaPorMunicipios |> 
+  mutate(cdcta = trimws(as.character(cdcta)),
+         NombreEnte = trimws(as.character(NombreEnte)),
+         NOMBRE = trimws(as.character(NOMBRE))) |> 
+  filter(nchar(cdcta) == 1 & !str_detect(NombreEnte, "^Mc") 
+         & NombreEnte == NOMBRE)
+```
+
+### Adding total spending (per reason)
+
+Total spending per revenue source
+
+Group by 'cdcta' and 'INE', then calculate the (total) sum of revenue
+
+summarized revenue contains one total amount spent per reason
+
+total importe contains the total money spent by the municipality in 2020
+
+Using importer
+
+Importer includes the recognized rights, which in this context means the revenues that have been formally acknowledged by the municipality for the given fiscal year.
+This metric will provide you with the most accurate figure for the total revenue that the municipality has recognized during that year, encompassing all sources of revenue that have been recorded as rights.
+
+```{r}
+summarized_revenue <- tb_economicaPorMunicipios |> 
+  group_by(cdcta, INE) |> 
+  summarize(total_revenue_per_source = sum(importer)) |> 
+  ungroup()
+
+total_revenuePorMunicipio <- tb_economicaPorMunicipios |> 
+  group_by(INE) |> 
+  summarize(total_revenue_per_mun = sum(importer)) |> 
+  ungroup()
+```
+
+Keeping only one spending amount and spending reason per municipality
+
+--\> because in the base table each spending reason is listed as many times as money was spent on it
+
+--\> keeping only one then keeps only one reason + total spending combination
+
+```{r}
+tb_revenue_per_source <-
+  tb_economicaPorMunicipios |> 
+  left_join(summarized_revenue, by = c("cdcta", "INE")) |>
+  left_join(total_revenuePorMunicipio, by = "INE") |> 
+  group_by(INE, cdcta) |> 
+  distinct(cdcta, .keep_all = T) |> 
+  ungroup() |> 
+  select(INE, NOMBRE, nombre, total_revenue_per_source, total_revenue_per_mun)
+```
+
+### Creating revnue stream categories
+
+Pivoting wider for variables
+
+Renaming for easier handling
+
+Zero imputation
+
+creating categories
+
+per_capita calculation will be done at the end when merging with population data
+
+```{r}
+revenue_municipality_final <- 
+  tb_revenue_per_source |> 
+  pivot_wider(names_from = nombre,
+              values_from = total_revenue_per_source) |> 
+  rename(direct_taxes = `CAP. I IMPUESTOS DIRECTOS                                                                                                    `,
+         indirect_taxes = `CAP. II IMPUESTOS INDIRECTOS                                                                                                 `,
+         fees_other_revenues = `CAP. III TASAS Y OTROS INGRESOS                                                                                              `,
+         current_transfers = `CAP. IV  TRANSFERENCIAS CORRIENTES                                                                                           `,
+         property_income = `CAP. V INGRESOS PATRIMONIALES                                                                                                `,
+         sale_investments = `CAP. VI ENAJENACIÓN DE INVERSIONES REALES                                                                                    `,
+         capital_transfers = `CAP. VII TRANSFERENCIAS DE CAPITAL                                                                                           `,
+        
+         financial_assets = `CAP. VIII ACTIVOS FINANCIEROS                                                                                                `,
+         financial_liabilities = `CAP. IX PASIVOS FINANCIEROS                                                                                                  `) |> 
+  mutate_if(is.numeric, ~ifelse(is.na(.), 0, .)) |> 
+  rename(total_revenue_MUN = total_revenue_per_mun) |> 
+  mutate(revenue_tax = direct_taxes + indirect_taxes,
+         revenue_grants = current_transfers + capital_transfers,
+         revenue_other = fees_other_revenues + financial_assets + financial_liabilities + property_income + sale_investments) |> 
+  select(INE, total_revenue_MUN, revenue_tax, revenue_grants, revenue_other)
 ```
 
 ## CCAA expenditure
@@ -1088,7 +1237,8 @@ object_to_keep <- c("df_spen_imp_mun_tidy",
                     "political_leadership_mun",
                     "spending_CCAA_final",
                     "median_income",
-                    "tax_rates_2020")
+                    "tax_rates_2020",
+                    "revenue_municipality_final")
 objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
@@ -1110,6 +1260,7 @@ df <-
   left_join(political_leadership_mun, by = "INE") |> 
   left_join(median_income, by = "INE") |> 
   left_join(tax_rates_2020, by = "INE") |> 
+  left_join(revenue_municipality_final, by = "INE") |> 
   left_join(political_leadership_CCAA, by = "CODAUTO") |> 
   left_join(spending_CCAA_final, by = "CODAUTO") 
 ```
@@ -1124,7 +1275,12 @@ df <-
   mutate(per_capita_MUN = total_MUN/pop_total,
          pop_density = pop_total/ area_sqkm,
          per_capita_contracts = contracts_mean_2020/pop_total,
-         n_firms = as.numeric(n_firms))
+         n_firms = as.numeric(n_firms),
+         revenue_tax_per_capita = revenue_tax/pop_total,
+         revenue_grants_per_capita = revenue_grants/pop_total,
+         revenue_other_per_capita = revenue_other/pop_total,
+         per_capita_revenue = total_revenue_MUN/pop_total) |> 
+  select(- revenue_tax, revenue_grants, revenue_other, total_revenue_MUN)
 ```
 
 ### Renaming fields of expenditure
