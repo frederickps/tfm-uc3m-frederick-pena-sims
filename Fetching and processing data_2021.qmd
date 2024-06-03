@@ -48,8 +48,6 @@ tb_funcionalPorEntes <- dbReadTable(con, "v_funcionalPorEntes", colClasses = c(F
 tb_cuentasProgramas <- dbReadTable(con, "tb_cuentasProgramas")
 ```
 
-
-
 ### Applying official classification
 
 Joining codigo municipio for official classification
@@ -157,6 +155,7 @@ verification1
 ```
 
 ### Calculating share of spending
+
 Now calculating the share of each spending
 
 ```{r}
@@ -263,17 +262,17 @@ follow roughly previous steps - on
 
 v_economicaPorEntes
 
---> filter - tipreig == "I"
+--\> filter - tipreig == "I"
 
---> only cdcta with 1 character 
+--\> only cdcta with 1 character
 
---> transfers and taxes per capita (maybe other) + total
+--\> transfers and taxes per capita (maybe other) + total
 
---> adding names of municipalities (for verification)
+--\> adding names of municipalities (for verification)
 
 ### Applying offical classification
 
-codigo list for municipalitie and the respective 
+codigo list for municipalitie and the respective
 
 ```{r}
 tb_economicaPorEntes <- 
@@ -293,15 +292,15 @@ tb_economicaPorMunicipios <-
   inner_join(tb_cuentasEconomica, by ="cdcta")
 ```
 
-### Cleaning  municipalities
+### Cleaning municipalities
 
 Standardizing codification and reducing number of spending reasons
 
 What variables do I want to have?
 
-Only codes with one character --> reason:
+Only codes with one character --\> reason:
 
-- least fine-grained data needed --> total revenue and split up - revenue grants, revenue taxes, other
+-   least fine-grained data needed --\> total revenue and split up - revenue grants, revenue taxes, other
 
 Also, deleting all mancomunidades from the dataframe.
 
@@ -331,8 +330,7 @@ total importe contains the total money spent by the municipality in 2020
 
 Using importer
 
-Importer includes the recognized rights, which in this context means the revenues that have been formally acknowledged by the municipality for the given fiscal year.
-This metric will provide you with the most accurate figure for the total revenue that the municipality has recognized during that year, encompassing all sources of revenue that have been recorded as rights.
+Importer includes the recognized rights, which in this context means the revenues that have been formally acknowledged by the municipality for the given fiscal year. This metric will provide you with the most accurate figure for the total revenue that the municipality has recognized during that year, encompassing all sources of revenue that have been recorded as rights.
 
 ```{r}
 summarized_revenue <- tb_economicaPorMunicipios |> 
@@ -400,159 +398,86 @@ revenue_municipality_final <-
 
 ## CCAA expenditure
 
+repetetive procedure --\> hence function
+
 ```{r}
-CCAA_01 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 3, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "01",
-         total = total * 1000000)
+spending_CCAA <- 
+  function(data_file, sheet, CCAA){
+  data <-
+    read_excel(paste0("Data_2020/", data_file),
+             sheet = sheet, skip = 6) |> 
+    filter(...2 == "GASTO TOTAL") |> 
+  rename(total = "\r\nTOTAL",
+         ccaa_general_services = "\r\n01. Servicios públicos generales",
+         ccaa_security = "\r\n03. Orden público y seguridad",
+         ccaa_economic = "\r\n04. Asuntos económicos",
+         ccaa_housing_services = "\r\n06. Vivienda y servicios comunitarios",
+         ccaa_health = "07.Salud",
+         ccaa_culture = "\r\n08. Ocio, cultura y religión",
+         ccaa_social_protection = "\r\n10. Protección social",
+         CODAUTO = ...2
+) |> 
+  select(CODAUTO, total, ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection) |> 
+  mutate(across(2:9, ~ . * 1000000))
+  
+data$CODAUTO <- CCAA
+  
+assign(paste0("CCAA_", CCAA), data, envir = .GlobalEnv)
+  }
+```
 
-CCAA_02 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 4, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "02",
-         total = total * 1000000)
+```{r}
+# CCAA 01
+spending_CCAA("CCAA_spending_2020.xlsx", 3, "01")
 
-CCAA_03 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 5, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "03",
-         total = total * 1000000)
 
-CCAA_04 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 6, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "04",
-         total = total * 1000000)
+# CCAA 02
+spending_CCAA("CCAA_spending_2020.xlsx", 4, "02")
 
-CCAA_05 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 7, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "05",
-         total = total * 1000000)
+# CCAA 03
+spending_CCAA("CCAA_spending_2020.xlsx", 5, "03")
 
-CCAA_06 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 8, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "06",
-         total = total * 1000000)
+# CCAA 04
+spending_CCAA("CCAA_spending_2020.xlsx", 6, "04")
 
-CCAA_07 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 10, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "07",
-         total = total * 1000000)
+# CCAA 05
+spending_CCAA("CCAA_spending_2020.xlsx", 7, "05")
 
-CCAA_08 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 9, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "08",
-         total = total * 1000000)
+# CCAA 06
+spending_CCAA("CCAA_spending_2020.xlsx", 8, "06")
 
-CCAA_09 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 11, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "09",
-         total = total * 1000000)
+# CCAA 07
+spending_CCAA("CCAA_spending_2020.xlsx", 10, "07")
 
-CCAA_10 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 18, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "10",
-         total = total * 1000000)
+# CCAA 08
+spending_CCAA("CCAA_spending_2020.xlsx", 9, "08")
 
-CCAA_11 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 12, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "11",
-         total = total * 1000000)
+# CCAA 09
+spending_CCAA("CCAA_spending_2020.xlsx", 11, "09")
 
-CCAA_12 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 14, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "12",
-         total = total * 1000000)
+# CCAA 10
+spending_CCAA("CCAA_spending_2020.xlsx", 18, "10")
 
-CCAA_13 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 13, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "13",
-         total = total * 1000000)
+# CCAA 11
+spending_CCAA("CCAA_spending_2020.xlsx", 12, "11")
 
-CCAA_14 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 15, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "14",
-         total = total * 1000000)
+# CCAA 12 
+spending_CCAA("CCAA_spending_2020.xlsx", 14, "12")
 
-CCAA_15 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 16, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "15",
-         total = total * 1000000)
+# CCAA 13
+spending_CCAA("CCAA_spending_2020.xlsx", 13, "13")
 
-CCAA_16 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 19, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "16",
-         total = total * 1000000)
+# CCAA 14
+spending_CCAA("CCAA_spending_2020.xlsx", 15, "14")
 
-CCAA_17 <- 
-  read_excel("Data_2020/CCAA_spending_2020.xlsx", sheet = 17, skip = 6) |>
-  rename(total = "\r\nTOTAL") |> 
-  filter(...2 == "GASTO TOTAL") |>  
-  select(...2, total) |> 
-  rename(CODAUTO = ...2) |> 
-  mutate(CODAUTO = "17",
-         total = total * 1000000)
+# CCAA 15
+spending_CCAA("CCAA_spending_2020.xlsx", 16, "15")
+
+# CCAA 16
+spending_CCAA("CCAA_spending_2020.xlsx", 19, "16")
+
+# CCAA 17
+spending_CCAA("CCAA_spending_2020.xlsx", 17, "17")
 
 spending_CCAA_objects <- mget(ls(pattern = "^CCAA"))
 spending_CCAA <- do.call(rbind, spending_CCAA_objects)
@@ -573,16 +498,30 @@ pop_CCAA <-
 
 Merging spending data and population data
 
+#### DELETE UNNECESSARY VARIABLES
+
 ```{r}
 spending_CCAA_final <- 
   spending_CCAA |> 
   left_join(pop_CCAA, by = "CODAUTO") |> 
-  mutate(per_capita_CCAA = total/pop_2020) |> 
+  mutate(per_capita_CCAA = total/pop_2020,
+         per_capita_ccaa_general_services = ccaa_general_services/pop_2020,
+         per_capita_ccaa_security = ccaa_security/pop_2020,
+         per_capita_ccaa_economic = ccaa_economic/pop_2020,
+         per_capita_ccaa_housing_services = ccaa_housing_services/pop_2020, ccaa_health_per_capita = ccaa_health/pop_2020,
+         per_capita_ccaa_culture = ccaa_culture/pop_2020,
+         per_capita_ccaa_social_protection = ccaa_social_protection/pop_2020,
+         share_ccaa_general_services = (ccaa_general_services/total)*100,
+         share_ccaa_security = (ccaa_security/total)*100,
+         share_ccaa_economic = (ccaa_economic/total)*100,
+         share_ccaa_housing_services = (ccaa_housing_services/total)*100,
+         share_ccaa_culture = (ccaa_culture/total)*100,
+         share_ccaa_social_protection = (ccaa_social_protection/total)*100) |> 
   rename(total_CCAA = total) |> 
-  select(CODAUTO, per_capita_CCAA, total_CCAA)
+  select(CODAUTO, per_capita_CCAA, total_CCAA, per_capita_ccaa_general_services, per_capita_ccaa_security, per_capita_ccaa_economic, per_capita_ccaa_housing_services, per_capita_ccaa_culture, per_capita_ccaa_social_protection, share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection)
 ```
 
-## Contracts
+ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection \## Contracts
 
 Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
 
@@ -663,6 +602,8 @@ population <-
   ungroup() 
 ```
 
+## DELETE IF NOT NEEDED
+
 ```{r}
 population_national <- 
   population |>
@@ -670,6 +611,12 @@ population_national <-
   mutate(INE = "00") |> 
   rename(CODAUTO = INE)
 ```
+
+### Municipality size
+
+Different municipalities have different required expenditures
+
+More variables (How to make a variable out of it?) 0 – 5,0000 5,000 – 20,000 20,000 – 50,000 50,000 and above
 
 Creating data frame only with municipalities
 
@@ -680,7 +627,7 @@ population <-
   population |> 
   filter(INE != "Total") |> 
   drop_na() |> 
-  mutate(greater_20k = as.character(if_else(pop_total > 20000, 1, 0)))
+  mutate(greater_20k = as.factor(if_else(pop_total > 20000, 1,0)))
 ```
 
 ### Average age
@@ -1111,6 +1058,28 @@ median_income <-
   select(-NOMBRE)
 ```
 
+## Covid - employment data
+
+Adding information of share of businesses providing essential services in covid pandemic 
+
+Adding information on share of employment providing essential services in Covid pandemic
+
+Data: https://www.ine.es/jaxi/Tabla.htm?path=/COVID/dirce/l0/&file=01002.px&L=0
+
+Royal Decree: https://www.ine.es/covid/nota_tecnica_dirce.pdf
+
+```{r}
+covid_employment <- 
+  read_excel("Data_2020/essential_emp_mun_2020.xlsx", skip = 5) |> 
+  mutate(...1 = str_replace(...1, "^(\\S+) ", "\\1 ")) |> 
+  separate(...1, into = c("INE", "NOMBRE"), sep = "-") |> 
+  rename(share_essential_business = "Porcentaje de empresas que prestan servicios esenciales",
+         share_essential_employment = "Porcentaje de empleo respecto al total de la actividad") |> 
+  mutate(share_essential_employment = as.numeric(share_essential_employment)) |> 
+  select(INE, share_essential_business, share_essential_employment)
+```
+
+
 ## Political leadership
 
 ### Municipality - Party of mayor
@@ -1125,7 +1094,8 @@ political_leadership_mun <-
   select(MUNICIPIO, INE, party_mun, "NOMBRE",resignation_date) |> 
   group_by(INE) |> 
   filter(if(all(is.na(resignation_date))) TRUE else if(any(!is.na(resignation_date) & resignation_date < as.Date("2022-01-01"))) row_number() == max(which(resignation_date < as.Date("2022-01-01"))) + 1 else row_number() == 1) |> # if resignation is NA then keep the row, else if the row is not NA and the resignation date is before 2022-01-01 it chooses the row number where the resignation date is closest below 2022-01-01 and selects the row +1. This effectively chooses the row of the mayor who assumed his position before 2022-01-01. If the resignation date is not before 2022-01-01 then the first row is chosen.
-  select(INE, party_mun)
+  select(INE, party_mun) |> 
+  mutate(party_mun = as.factor(party_mun))
 ```
 
 ### CCAA
@@ -1193,7 +1163,8 @@ political_leadership_CCAA <-
   mutate(across(c(CCAA, President, Start, End, Duration, Party), ~gsub("\\.", " ", .))) |> left_join(code_CCAA, by = c("CCAA" = "Literal")) |> 
   select(CCAA, Party, Código) |> 
   rename(party_ccaa = Party,
-         CODAUTO = Código)
+         CODAUTO = Código) |> 
+  mutate(party_ccaa = as.factor(party_ccaa))
 ```
 
 ## Tax codes
@@ -1201,8 +1172,6 @@ political_leadership_CCAA <-
 Taxation levied by municipalities
 
 https://serviciostelematicosext.hacienda.gob.es/SGFAL/ConsultaTipos/aspx/listado_municipiosm.aspx
-
-
 
 Getting property taxes based on type of property, construction work taxes, turnover weights
 
@@ -1219,7 +1188,6 @@ tax_rates_2020 <-
   mutate(INE = str_replace_all(INE, "(\\d{2})-(\\d{2})-(\\d{3})", "\\2\\3")) |> 
   select(INE, urban_prop_tax, rural_prop_tax, special_prop_tax, max_coef_turn_tax, min_coef_turn_tax)
 ```
-
 
 ## List of useful dataframes
 
@@ -1238,7 +1206,8 @@ object_to_keep <- c("df_spen_imp_mun_tidy",
                     "spending_CCAA_final",
                     "median_income",
                     "tax_rates_2020",
-                    "revenue_municipality_final")
+                    "revenue_municipality_final",
+                    "covid_employment")
 objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
@@ -1254,6 +1223,7 @@ df <-
   left_join(unemployment_rate_2020, by = "INE") |> 
   left_join(target, by = "INE") |> 
   left_join(population, by = "INE") |> 
+  left_join(covid_employment, by = "INE") |> 
   left_join(n_firms, by = "INE") |> 
   left_join(avg_age_final, by = "INE") |> 
   left_join(contracts, by = "INE") |> 
@@ -1276,11 +1246,11 @@ df <-
          pop_density = pop_total/ area_sqkm,
          per_capita_contracts = contracts_mean_2020/pop_total,
          n_firms = as.numeric(n_firms),
-         revenue_tax_per_capita = revenue_tax/pop_total,
-         revenue_grants_per_capita = revenue_grants/pop_total,
-         revenue_other_per_capita = revenue_other/pop_total,
-         per_capita_revenue = total_revenue_MUN/pop_total) |> 
-  select(- revenue_tax, revenue_grants, revenue_other, total_revenue_MUN)
+         revenue_tax_share = revenue_tax/total_revenue_MUN,
+         revenue_grants_share = revenue_grants/total_revenue_MUN,
+         revenue_other_share = revenue_other/total_revenue_MUN,
+         per_capita_revenue = total_revenue_MUN/total_revenue_MUN) |> 
+  select(- revenue_tax, -revenue_grants, -revenue_other, -total_revenue_MUN)
 ```
 
 ### Renaming fields of expenditure
@@ -1291,7 +1261,6 @@ df <-
   relocate(party_mun, .after = NOMBRE) |> 
   relocate(c(CCAA, party_ccaa), .after = CODAUTO) |> 
   relocate(per_capita_MUN, .after = total_MUN) |> 
-  relocate(greater_20k, .after = pop_total) |> 
   relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN) |> 
   rename(employment_promotion = "Fomento del Empleo",
          general_services = "Servicios de carácter general",
@@ -1317,12 +1286,21 @@ df <-
          trans_public_agencies = "Transferencias a otras Administraciones Públicas",
          agr_farm_fish = "Agricultura, Ganadería y Pesca",
          pensions = "Pensiones",
-         other_econ = "Otras actuaciones de carácter económico") |> 
+         other_econ = "Otras actuaciones de carácter económico") 
+```
+
+### Adjusting budget of Ceuta and Melilla
+
+```{r}
+df <- 
+  df |> 
   mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA),
          per_capita_CCAA = if_else(CCAA == "Melilla", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
   mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_CCAA),
          total_CCAA = if_else(CCAA == "Melilla", total_MUN, total_CCAA))
 ```
+
+### Filtering out NA values for target values
 
 ```{r}
 df_final <- 

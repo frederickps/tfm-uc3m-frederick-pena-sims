@@ -29,7 +29,7 @@ library(pdp)
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data_2020/TFM_data_2024-05-31.csv", colClasses = c(INE = "character")) |> 
+df_final <- read.csv("Data_2020/TFM_data_2024-06-03.csv", colClasses = c(INE = "character")) |> 
   select(-X)
 ```
 
@@ -129,7 +129,7 @@ df_dea <-
 ```{r}
 df_dea |> 
   ggplot()+
-  geom_histogram(aes(dea_robust), stat = "bin", bins = 160)
+  geom_histogram(aes(log(dea_robust)), stat = "bin", bins = 160)
 ```
 
 #### Most efficient municipalities
@@ -175,31 +175,39 @@ t_test_result <- t.test(greater_100k, smaller_100k)
 t_test_result
 ```
 
-a bit more pronounced 
+a bit more pronounced
 
-## Feature Selection and Engineering 
+## Feature Selection and Engineering
 
 ### Variable selection
 
-All variables without additional meaning and variables used in estimating efficiency score
+All variables without additional meaning and variables used in estimating efficiency score+
+
+No revenue data - resembles spending data
+
+delted this revenue data:
+, revenue_grants, revenue_other, revenue_tax_per_capita, revenue_grants_per_capita, revenue_other_per_capita,per_capita_revenue,
+
+also deleted population (too little information)
+, pop_smaller_5k, pop_5k_to_20k, pop_20k_to_50k, pop_50k_above
 
 ```{r}
 df_model <- 
   df_dea |> 
-  select(-c(CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, contracts_mean_2020, median_inc_con_unit))
+  select(-c(CCAA, CODAUTO, CPRO, total_CCAA, total_MUN, target, dist_prov_cap, per_capita_CCAA, per_capita_MUN, n_firms, contracts_mean_2020, median_inc_con_unit,  per_capita_ccaa_general_services,per_capita_ccaa_security, per_capita_ccaa_economic, per_capita_ccaa_housing_services, per_capita_ccaa_culture, per_capita_ccaa_social_protection))
 ```
 
+Data chosen I
+, share_essential_business, share_essential_employment, per_capita_ccaa_general_services,per_capita_ccaa_security, per_capita_ccaa_economic, per_capita_ccaa_housing_services, per_capita_ccaa_culture, per_capita_ccaa_social_protection
+
+Data chosen II
+share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection
+
+### Data report
 
 ```{r}
-df_model <- 
-  df_model |> 
-  mutate(
-    party_mun = as.factor(party_mun),
-    party_ccaa = as.factor(party_ccaa),
-    greater_20k = as.factor(greater_20k)
-  )
+library(DataExplorer)
 ```
-
 
 ### Data imputation
 
@@ -208,17 +216,18 @@ m <- 5
 set.seed(475)
 imp <- mice(df_model, m = m, method= "rf")
 df_model_imp <- complete(imp, action=m)
-
-df_model_imp <- 
-  df_model_imp |> 
-  filter(!is.na(party_mun))
 ```
+
 ### Correlation - robust
 
 ```{r}
 df_model_robust <- df_model_imp |> 
-  select(-INE, -NOMBRE)
+  select(-c(INE, NOMBRE)) |> 
+  filter(!is.na(party_mun)) |> 
+  drop_na()
 ```
+
+
 
 ```{r}
 df_corr <-
@@ -226,13 +235,13 @@ df_corr <-
   dplyr::select(-dea_robust) |>
   select_if(is.numeric)
 
-corr<- cor(df_model_robust$dea_robust, df_corr)
+corr<- cor(df_model_robust$dea_robust, df_corr, method = "spearman")
 corr<-round(corr,4)
 
 df_corr_results <- 
   data.frame(corr) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:39,
+               cols = 1:48,
                names_to = "variable")
 
 ggplot(df_corr_results, aes(x = variable, y = correlation)) +
@@ -265,15 +274,54 @@ non_zero_vars <- non_zero_vars[-1]
 non_zero_vars
 ```
 
+#### Data chosen I - CCAA per capita
+
+[1] "party_munOTROS"                    "party_munPSOE"                     "party_munN.ADS."                  
+ [4] "party_munUCIN"                     "party_munAxSI"                     "party_munBNG"                     
+ [7] "party_munPAR"                      "party_munUPL"                      "party_ccaaERC"                    
+[10] "party_ccaaPNV"                     "party_ccaaPSOE"                    "general_services"                 
+[13] "environment"                       "social_services"                   "agr_farm_fish"                    
+[16] "tax_fin_admin"                     "public_debt"                       "health"                           
+[19] "education"                         "infrastructure"                    "employment_promotion"             
+[22] "sports"                            "pub_transportation"                "area_sqkm"                        
+[25] "ue_pct_2020"                       "pop_share_foreigners"              "pop_share_wk_age"                 
+[28] "pop_share_retirees"                "share_essential_business"          "share_essential_employment"       
+[31] "rural_prop_tax"                    "special_prop_tax"                  "min_coef_turn_tax"                
+[34] "per_capita_ccaa_general_services"  "per_capita_ccaa_security"          "per_capita_ccaa_economic"         
+[37] "per_capita_ccaa_culture"           "per_capita_ccaa_social_protection" "pop_density"                      
+[40] "per_capita_contracts"              "revenue_tax_share"               
+
+#### Data chosen II
+[1] "party_munPP"                  "party_munOTROS"               "party_munPSOE"               
+ [4] "party_munN.ADS."              "party_munUCIN"                "party_munAxSI"               
+ [7] "party_munBNG"                 "party_munPAR"                 "party_munUPL"                
+[10] "party_ccaaERC"                "party_ccaaPNV"                "party_ccaaPRC"               
+[13] "party_ccaaPSOE"               "general_services"             "environment"                 
+[16] "social_services"              "agr_farm_fish"                "tax_fin_admin"               
+[19] "public_debt"                  "health"                       "education"                   
+[22] "infrastructure"               "employment_promotion"         "sports"                      
+[25] "pub_transportation"           "area_sqkm"                    "ue_pct_2020"                 
+[28] "pop_share_foreigners"         "pop_share_wk_age"             "pop_share_retirees"          
+[31] "share_essential_business"     "share_essential_employment"   "rural_prop_tax"              
+[34] "special_prop_tax"             "min_coef_turn_tax"            "share_ccaa_general_services" 
+[37] "share_ccaa_economic"          "share_ccaa_culture"           "share_ccaa_social_protection"
+[40] "pop_density"                  "per_capita_contracts"         "revenue_tax_share" 
+
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
 
 
 df_model_final <- 
-  df_model_imp |> ## to include INE and NOMBRE again
-  dplyr::select(all_of(non_zero_vars), dea_robust, greater_20k, party_mun, party_ccaa, INE, NOMBRE)
-# excluded party ccaa and party mun for the moment
+  df_model_imp |>
+  dplyr::select(all_of(non_zero_vars), dea_robust, party_mun, INE, NOMBRE,party_ccaa)|> 
+  filter(!is.na(party_mun)) |> 
+  drop_na()
+# excluded party ccaa for the moment
+
+# all_of(non_zero_vars), dea_robust, greater_20k, party_mun, party_ccaa, INE, NOMBRE
 ```
+
+Hypothesis: covid employment data makes models overfit --\> too accurate AND decreases R-squared. How?
 
 ### Modelling
 
@@ -283,7 +331,7 @@ df_model_final <-
 set.seed(123)  
 training.samples <-
   df_model_final$dea_robust |> 
-  createDataPartition(p = 0.8, list = FALSE)
+  createDataPartition(p = 0.75, list = FALSE)
 
 train.data  <- df_model_final[training.samples, ]
 test.data <- df_model_final[-training.samples, ] 
@@ -291,9 +339,10 @@ test.data <- df_model_final[-training.samples, ]
 # deleting INE and NOMBRE from train set to keep in test only
 train.data$INE <- NULL
 train.data$NOMBRE <- NULL
+
 ```
 
-#### Random forest
+#### Target normal - Random forest
 
 ```{r}
 set.seed(3456)
@@ -303,7 +352,7 @@ rf_tune <- train(dea_robust ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 tuneGrid = data.frame(mtry=c(18,21)),
                  importance = TRUE)
 
 rf_tune$finalModel$importance
@@ -315,19 +364,19 @@ varImp(rf_tune)
 plot(varImp(rf_tune))
 ```
 
-##### Highest
+##### Results
 
-target + median_inc_con_unit
-
-0.5851483
-
+See data chosen I
+0.6485436 
 MAE
+0.03261175
 
-0.03638562
+Data chosen II
+0.6504064
+MAE
+0.03264785
 
-target + median_inc_con_unit (excluding ue_pct_2020)
-
-0.49755 –\> above 50 if log
+--\> constant problem: overfitting (test-resample mostly 57-58)
 
 -   **MAE Interpretation:** MAE (Mean Absolute Error) represents the average difference between the predicted values and the actual values. In your case, the average difference is only 0.034, which is a very small portion of the target variable's range (0.5 to 1).
 
@@ -339,37 +388,206 @@ target + median_inc_con_unit (excluding ue_pct_2020)
 
 Prediction
 
+#### Target log - Random forest
+
+```{r}
+set.seed(3456)
+rf_tune_log <- train(log(dea_robust) ~., 
+                 data = train.data,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 importance = TRUE)
+
+rf_tune_log$finalModel$importance
+
+rf_tune_log$results
+
+varImp(rf_tune_log)
+
+plot(varImp(rf_tune_log))
+```
+
+##### Results
+
+see data chosen I
+0.6540520
+
+MAE
+0.04215671
+
+see data chosen II
+0.6578412
+MAE
+0.04214916
+
+#### Target log10 - Random forest
+
+```{r}
+set.seed(3456)
+rf_tune_log10 <- train(log10(dea_robust) ~., 
+                 data = train.data,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 importance = TRUE)
+
+rf_tune_log10$finalModel$importance
+
+rf_tune_log10$results
+
+varImp(rf_tune_log10)
+
+plot(varImp(rf_tune_log10))
+```
+
+##### Results
+
+see data chosen I
+0.6551247
+MAE
+0.01828085
+
+see data chosen II
+0.6588424
+MAE
+0.01826309
+
+#### Target cube root - Random forest
+
+```{r}
+set.seed(3456)
+rf_tune_cube <- train((dea_robust)^(1/3) ~., 
+                 data = train.data,
+                 method = "rf",
+                 preProc=c('scale','center'),
+                 trControl = ctrl,
+                 ntree = 100,
+                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 importance = TRUE)
+
+rf_tune_cube$finalModel$importance
+
+rf_tune_cube$results
+
+varImp(rf_tune_cube)
+
+plot(varImp(rf_tune_cube))
+```
+
+##### Results
+
+see data chosen I
+0.6541936
+MAE
+0.01287778
+
+see data chosen II
+0.6540056
+MAE
+0.01297889
+
+#### Test data comparison
+
 ```{r}
 test_results <- data.frame(dea_robust = test.data$dea_robust)
+#normal
 test_results$rf <- predict(rf_tune, test.data)
 postResample(pred = test_results$rf,  obs = test_results$dea_robust)
+# log
+test_results$rf_log <- predict(rf_tune_log, test.data)
+postResample(pred = test_results$rf_log,  obs = test_results$dea_robust)
+# log10
+test_results$rf_log10 <- predict(rf_tune_log10, test.data)
+postResample(pred = test_results$rf_log10,  obs = test_results$dea_robust)
+# cube
+test_results$rf_cube <- predict(rf_tune_cube, test.data)
+postResample(pred = test_results$rf_cube,  obs = test_results$dea_robust)
+```
+##### Excluding party data and employment in covid data 
 
+see data chosen I
+Normal
+ RMSE   Rsquared        MAE 
+0.04348254 0.63551313 0.03342641 
+Log
+     RMSE  Rsquared       MAE 
+1.0349068 0.6321799 1.0339004 
+Log10
+     RMSE  Rsquared       MAE 
+0.8864418 0.6377261 0.8849826 
+Cube
+     RMSE  Rsquared       MAE 
+0.1564581 0.6334893 0.1461005 
+
+-\-> strong overfitting
+
+see data chosen II
+Normal
+      RMSE   Rsquared        MAE 
+0.04340711 0.63832142 0.03360933 
+Log
+     RMSE  Rsquared       MAE 
+1.0348870 0.6334083 1.0338983 
+Log10
+     RMSE  Rsquared       MAE 
+0.8861580 0.6358376 0.8846834 
+Cube
+     RMSE  Rsquared       MAE 
+0.1564919 0.6346190 0.1461201 
+
+-\-> again strong overfitting 
+
+#### Visualizing best
+
+```{r}
 qplot(test_results$rf, test_results$dea_robust) + 
   labs(title="RF Regression Observed VS Predicted", x="Predicted", y="Observed") +
   geom_abline(intercept = 0, slope = 1, colour = "blue") +
   theme_bw()
 ```
 
+#### Normalizing data - Normal target - RF
+
+taking normal target variable best MAE rsquared combination
+
+
 ### MAE Investigation
 
 ```{r}
-# Calculate the Mean Absolute Error (MAE) for each observation
-mae_per_observation <- abs(test_results$rf - test_results$dea_robust)
+# normal
+mae_per_observation_rf <- abs(test_results$rf - test_results$dea_robust)
+test.data$mae_rf <- mae_per_observation_rf
 
-# Add the MAE to the corresponding observations in the original data frame (df_dea)
-test.data$MAE <- mae_per_observation
+# log
+mae_per_observation_rf_log <- abs(test_results$rf_log - test_results$dea_robust)
+test.data$mae_rf_log <- mae_per_observation_rf_log
+
+# log10
+mae_per_observation_rf_log10 <- abs(test_results$rf_log10 - test_results$dea_robust)
+test.data$mae_rf_log10 <- mae_per_observation_rf_log10
+
+# cube
+mae_per_observation_rf_cube <- abs(test_results$rf_cube - test_results$dea_robust)
+test.data$mae_rf_cube <- mae_per_observation_rf_cube
 ```
-
 
 ```{r}
 df_mae <- 
   test.data |> 
-  select(INE, NOMBRE, MAE) |> 
+  select(INE, NOMBRE, mae_rf, mae_rf_log, mae_rf_log10, mae_rf_cube) |> 
   left_join(df_dea, by = c("INE", "NOMBRE")) |> 
   drop_na()
+
+# data chosen I - per capita
+df_mae_I <- df_mae
 ```
 
-#### PDP 
+#### PDP
 
 ```{r}
 partial(rf_tune$finalModel, pred.var = "ue_pct_2020", plot = TRUE, rug = T, train = train.data)
@@ -383,6 +601,7 @@ autoplot(pdp_rf) +
 #### SHAP
 
 Importance Bee Plot
+
 ```{r}
 X <- train.data[sample(nrow(train.data), 1000), -which(names(train.data) == "dea_robust")]
 bg_X <- train.data[sample(nrow(train.data), 100), -which(names(train.data) == "dea_robust")]
@@ -393,15 +612,14 @@ sv_importance(sv, kind = "bee", max_display = Inf)
 ```
 
 Dependence
+
 ```{r}
 v_select_1 <- c("per_capita_contracts", "pop_density", "pop_share_wk_age", "area_sqkm", "rural_prop_tax", "social_services", "employment_promotion", "party_mun")
 sv_dependence(sv, v = v_select_1)
 ```
 
-
-
-
 Backup
+
 ```{r}
 library(iml)
 # Create a predictor object
@@ -426,7 +644,7 @@ corr_mae<-round(corr_mae,4)
 df_corr_mae_results <- 
   data.frame(corr_mae) |> 
   pivot_longer(values_to = "correlation",
-               cols = 1:49,
+               cols = 1:69,
                names_to = "variable")
 
 ggplot(df_corr_mae_results, aes(x = variable, y = correlation)) +
@@ -441,7 +659,7 @@ ggplot(df_corr_mae_results, aes(x = variable, y = correlation)) +
 ```{r}
 df_mae |> 
   ggplot()+
-  geom_point(aes(x = dea_robust, y = MAE)) +
+  geom_point(aes(x = dea_robust, y = mae_rf)) +
   theme_minimal()
 ```
 
@@ -468,9 +686,8 @@ ggplot(esp_can) +
   scale_fill_viridis_c(na.value = NA) +
   theme_minimal()
 ```
+
 No spatial relationship
-
-
 
 ```{r}
 df_mae |> 
@@ -487,7 +704,6 @@ ggplot(df_mae) +
     coord_cartesian(xlim = c(0, 90), ylim = c(0, 0.18))
 ```
 
-
 ```{r}
 ggplot(df_mae) +
     geom_point(aes(x = pop_total, y = MAE)) +
@@ -502,50 +718,24 @@ ggplot(df_mae) +
     coord_cartesian(xlim = c(0, 40), ylim = c(0, 0.18))
 ```
 
-
-```{r}
-
-```
-
-
 ```{r}
 df_mae |> 
   arrange(desc(MAE))
 ```
 
-
-
-
 ## Building the Model
 
 ### Adding features
 
-bivariat: 
+bivariat:
 
-pop_density --> threshold:
+pop_density --\> threshold:
 
-average_age --> threshold: 12
+average_age --\> threshold: 12
 
-area_sqkm --> trheshold: 60-70
+area_sqkm --\> trheshold: 60-70
 
-pop_total --> threshold: 500
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+pop_total --\> threshold: 500
 
 ## END
 
