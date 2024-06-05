@@ -371,7 +371,9 @@ Zero imputation
 
 creating categories
 
-per_capita calculation will be done at the end when merging with population data
+share calculation will be done at the end when merging with population data (share because Cifuentes + municipal budget balancing)
+
+to see how and why summarized see Cifuentes tables
 
 ```{r}
 revenue_municipality_final <- 
@@ -390,10 +392,14 @@ revenue_municipality_final <-
          financial_liabilities = `CAP. IX PASIVOS FINANCIEROS                                                                                                  `) |> 
   mutate_if(is.numeric, ~ifelse(is.na(.), 0, .)) |> 
   rename(total_revenue_MUN = total_revenue_per_mun) |> 
-  mutate(revenue_tax = direct_taxes + indirect_taxes,
+  mutate(revenue_tax = fees_other_revenues + direct_taxes + indirect_taxes,
          revenue_grants = current_transfers + capital_transfers,
-         revenue_other = fees_other_revenues + financial_assets + financial_liabilities + property_income + sale_investments) |> 
-  select(INE, total_revenue_MUN, revenue_tax, revenue_grants, revenue_other)
+         revenue_other = financial_assets + financial_liabilities + property_income + sale_investments) |> 
+  mutate(revenue_tax_share = revenue_tax/total_revenue_MUN,
+         revenue_grants_share = revenue_grants/total_revenue_MUN,
+         revenue_other_share = revenue_other/total_revenue_MUN,
+         per_capita_revenue = total_revenue_MUN/total_revenue_MUN) |> 
+  select(INE, revenue_tax_share, revenue_grants_share, revenue_other_share, per_capita_revenue)
 ```
 
 ## CCAA expenditure
@@ -498,30 +504,28 @@ pop_CCAA <-
 
 Merging spending data and population data
 
-#### DELETE UNNECESSARY VARIABLES
-
 ```{r}
 spending_CCAA_final <- 
   spending_CCAA |> 
   left_join(pop_CCAA, by = "CODAUTO") |> 
-  mutate(per_capita_CCAA = total/pop_2020,
-         per_capita_ccaa_general_services = ccaa_general_services/pop_2020,
-         per_capita_ccaa_security = ccaa_security/pop_2020,
-         per_capita_ccaa_economic = ccaa_economic/pop_2020,
-         per_capita_ccaa_housing_services = ccaa_housing_services/pop_2020, ccaa_health_per_capita = ccaa_health/pop_2020,
-         per_capita_ccaa_culture = ccaa_culture/pop_2020,
-         per_capita_ccaa_social_protection = ccaa_social_protection/pop_2020,
-         share_ccaa_general_services = (ccaa_general_services/total)*100,
+  mutate(share_ccaa_general_services = (ccaa_general_services/total)*100,
          share_ccaa_security = (ccaa_security/total)*100,
          share_ccaa_economic = (ccaa_economic/total)*100,
          share_ccaa_housing_services = (ccaa_housing_services/total)*100,
          share_ccaa_culture = (ccaa_culture/total)*100,
-         share_ccaa_social_protection = (ccaa_social_protection/total)*100) |> 
+         share_ccaa_social_protection = (ccaa_social_protection/total)*100,
+         per_capita_CCAA = total/pop_2020) |> 
   rename(total_CCAA = total) |> 
-  select(CODAUTO, per_capita_CCAA, total_CCAA, per_capita_ccaa_general_services, per_capita_ccaa_security, per_capita_ccaa_economic, per_capita_ccaa_housing_services, per_capita_ccaa_culture, per_capita_ccaa_social_protection, share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection)
+  select(CODAUTO, total_CCAA, per_capita_CCAA,share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection)
 ```
 
-ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection \## Contracts
+ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection \
+
+## Contracts
+
+share temporary of all contracts
+
+share service sector of all contracts
 
 Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
 
@@ -532,14 +536,26 @@ Manually changed data type to xlsx because csv did not work
 ```{r}
 contracts <- 
   read_xlsx("Data_2020/Contratos_por_municipios_2020.xlsx", skip = 1) |> 
-  select("mes", "Codigo Municipio", "Municipio", "Total Contratos") |> 
+  select("mes", "Codigo Municipio", "Municipio", "Total Contratos", `Contratos  Agricultura`, `Contratos  Industria`, `Contratos Construcción`, `Contratos  Servicios`) |> 
   rename(INE = "Codigo Municipio",
          NOMBRE = Municipio,
-         Contratos_total = "Total Contratos") |> 
+         Contratos_total = "Total Contratos",
+         Contratos_agri = `Contratos  Agricultura`,
+         Contratos_indu = `Contratos  Industria`,
+         Contratos_cons = `Contratos Construcción`,
+         Contratos_serv = `Contratos  Servicios`) |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
-  mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total))) |> 
+  mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total)),
+         share_contracts_agri = (Contratos_agri/Contratos_total)*100,
+         share_contracts_indu = (Contratos_indu/Contratos_total)*100,
+         share_contracts_con = (Contratos_cons/Contratos_total)*100,
+         share_contracts_serv = (Contratos_serv/Contratos_total)*100) |> 
   group_by(INE) |> 
-  summarise(contracts_mean_2020 = mean(Contratos_total))
+  summarise(contracts_mean_2020 = mean(Contratos_total),
+            share_contracts_agri = mean(share_contracts_agri, na.rm = T),
+            share_contracts_indu = mean(share_contracts_indu, na.rm = T),
+            share_contracts_con = mean(share_contracts_con, na.rm = T),
+            share_contracts_serv = mean(share_contracts_serv, na.rm = T))
 ```
 
 ## Distance From Provincial Capital
@@ -599,17 +615,9 @@ population <-
   population |> 
   group_by(INE) |> 
   slice_max(order_by = !!sym("pop_total"), n = 1) |> 
-  ungroup() 
-```
-
-## DELETE IF NOT NEEDED
-
-```{r}
-population_national <- 
-  population |>
-  filter(INE == "Total") |> 
-  mutate(INE = "00") |> 
-  rename(CODAUTO = INE)
+  ungroup() |> 
+  filter(INE != "Total") |> 
+  drop_na()
 ```
 
 ### Municipality size
@@ -625,14 +633,30 @@ Adding dummy variable greater than 20,000
 ```{r}
 population <- 
   population |> 
-  filter(INE != "Total") |> 
-  drop_na() |> 
   mutate(greater_20k = as.factor(if_else(pop_total > 20000, 1,0)))
+```
+
+
+### Share women
+
+```{r}
+
+share_women <- 
+  read_excel("Data_2020/pop_mun_women.xlsx", skip = 7) |> 
+  rename(municipio = Mujeres,
+         num_women = ...2) |> 
+  mutate(across(.cols = -municipio, .fns = lead)) |> 
+  drop_na() |> 
+  mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> # replaces the space after the first word (INE) score with underscore and seperates it afterwards
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  left_join(population, by = "INE") |> # required for total population information
+  mutate(share_women = (num_women/pop_total)*100) |> 
+  select(INE, share_women)
 ```
 
 ### Average age
 
--   ready made data only available for 2021
+-   saving in data frame because it takes too long
 
 ```{r, eval=FALSE}
 avg_age_raw <- 
@@ -688,21 +712,26 @@ avg_age_final <- read.csv("Data_2020/avg_age_final.csv", colClasses = c(INE = "c
 
 ## Number of firms
 
+share of firms in Comercio, transporte y hostelería
+
 <https://www.ine.es/jaxiT3/Tabla.htm?t=4721&L=0>
 
 Warning message because of notation in original table of 0 as ".".
 
 ```{r}
-n_firms <- 
+n_firms  <- 
   read_excel("Data_2020/n_firms_total.xlsx", skip = 7, col_names = TRUE) |> 
   rename(municipio = ...1,
-         n_firms = "2020") |>
-  drop_na() |> # dropping end of table
+         n_firms = "2020...2",
+         n_firms_service = "2020...3") |> # dropping end of table
   mutate(n_firms = as.numeric(n_firms),
-         municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
+         municipio = str_replace(municipio, "^(\\S+) ", "\\1_"),
+         n_firms_service = as.numeric(n_firms_service),
+         n_firms_service = if_else(is.na(n_firms_service), 0, n_firms_service),
+         share_firms_service = (n_firms_service/n_firms)*100) |> 
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
   mutate(n_firms = ifelse(is.na(n_firms), 0, n_firms)) |> 
-  select(-NOMBRE)
+  select(-NOMBRE, -n_firms_service)
 ```
 
 ## Target - Difference in unemployment rate
@@ -912,6 +941,8 @@ target <-
 
 ## Unemployment rate (2020)
 
+share of sector specific unemployed of all unemployed
+
 2020 data for unemployment
 
 Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
@@ -921,16 +952,28 @@ Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasP
 Unemployment = Paro / Paro + Social Security
 
 ```{r}
-unemployment_rate_2020 <- 
+unemployment_2020 <- 
   read_xlsx("Data_2020/Paro_por_municipios_2020.xlsx", skip = 1) |> 
-  select("Codigo Municipio", "total Paro Registrado") |> 
+  select("Codigo Municipio", "total Paro Registrado", "Paro Servicios", "Paro Construcción","Paro Industria", "Paro Agricultura", "Paro Sin empleo Anterior") |> 
   rename(INE = "Codigo Municipio",
-         Paro_total = "total Paro Registrado") |> 
+         Paro_total = "total Paro Registrado",
+         Paro_servicio = "Paro Servicios",
+         Paro_constr = "Paro Construcción",
+         Paro_indu = "Paro Industria",
+         Paro_agri = "Paro Agricultura",
+         Paro_sin_emp = "Paro Sin empleo Anterior") |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
-  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
+  mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)),
+         share_ue_service = (Paro_servicio/Paro_total)*100,
+         share_ue_construction = (Paro_constr/Paro_total)*100,
+         share_ue_industry = (Paro_indu/Paro_total)*100,
+         share_ue_agriculture = (Paro_agri/Paro_total)*100,
+         share_ue_wo_job = (Paro_sin_emp/Paro_total)*100) |> 
+  select(-c(Paro_servicio, Paro_constr, Paro_indu, Paro_agri, Paro_sin_emp))
 ```
 
 Adding december data
+
 
 ```{r, results='hide'}
 folder_path <- "Data_2020/paro_diciembre_2020"
@@ -946,12 +989,23 @@ for (i in seq_along(excel_files)) {
   file <- excel_files[i]
   
   data <- read_excel(file, skip = 6) |> 
-  select("...1", "...3") |> 
-  rename(INE = "...1",
-         Paro_total = "...3") |> 
+  select("...1", "...3", "...10", "...11", "...12", "...13", "...14") |> 
+  rename(INE = ...1,
+         Paro_total = ...3,
+         Paro_servicio = ...13,
+         Paro_constr = ...12,
+         Paro_indu = ...11,
+         Paro_agri = ...10,
+         Paro_sin_emp = ...14) |> 
   mutate(INE = as.character(INE),
-         INE = if_else(nchar(INE) == 4, paste0("0", INE), INE)) |> 
-  drop_na()
+         INE = if_else(nchar(INE) == 4, paste0("0", INE), INE),
+         share_ue_service = (Paro_servicio/Paro_total)*100,
+         share_ue_construction = (Paro_constr/Paro_total)*100,
+         share_ue_industry = (Paro_indu/Paro_total)*100,
+         share_ue_agriculture = (Paro_agri/Paro_total)*100,
+         share_ue_wo_job = (Paro_sin_emp/Paro_total)*100) |> 
+  drop_na() |> 
+  select(-c(Paro_servicio, Paro_constr, Paro_indu, Paro_agri, Paro_sin_emp))
   
   # Append the data frame to the list
   all_data[[length(all_data) + 1]] <- data
@@ -960,7 +1014,7 @@ for (i in seq_along(excel_files)) {
 unemployment_2020_dec <- do.call(rbind, all_data)
 
 # rbind to unemployment data
-unemployment_rate_2020 <- rbind(unemployment_rate_2020, unemployment_2020_dec)
+unemployment_2020 <- rbind(unemployment_2020, unemployment_2020_dec)
 ```
 
 Social Security data for active population
@@ -1015,14 +1069,19 @@ Merging with unemployment table
 
 ```{r}
 unemployment_rate_2020 <- 
-  unemployment_rate_2020 |> 
+  unemployment_2020 |> 
   group_by(INE) |> 
-  summarise(mean_ue = mean(Paro_total)) |> 
+  summarise(mean_ue = mean(Paro_total),
+            share_ue_service = mean(share_ue_service),
+            share_ue_construction = mean(share_ue_construction),
+            share_ue_industry = mean(share_ue_industry),
+            share_ue_agriculture = mean(share_ue_agriculture),
+            share_ue_wo_job = mean(share_ue_wo_job)) |> 
   ungroup() |> 
   left_join(social_security_2020, by = "INE") |> 
-  select(INE, mean_ue, mean_ss) |> 
+  select(INE, mean_ue, mean_ss, share_ue_service, share_ue_construction, share_ue_industry, share_ue_agriculture, share_ue_wo_job) |> 
   mutate(ue_pct_2020 = (mean_ue/(mean_ue + mean_ss))*100) |> 
-  drop_na()
+  drop_na(ue_pct_2020)
 ```
 
 ```{r}
@@ -1035,8 +1094,8 @@ Divergence of 1%
 
 ```{r}
 unemployment_rate_2020 <- 
-  unemployment_rate_2020 |> 
-  select(INE, ue_pct_2020)
+  unemployment_rate_2020 |>
+  select(INE, ue_pct_2020, share_ue_service, share_ue_construction, share_ue_industry, share_ue_agriculture, share_ue_wo_job)
 ```
 
 ## Target II - Income
@@ -1189,7 +1248,7 @@ tax_rates_2020 <-
   select(INE, urban_prop_tax, rural_prop_tax, special_prop_tax, max_coef_turn_tax, min_coef_turn_tax)
 ```
 
-## List of useful dataframes
+## REMOVE DEA List of useful dataframes
 
 ```{r}
 objects <- ls()
@@ -1207,7 +1266,9 @@ object_to_keep <- c("df_spen_imp_mun_tidy",
                     "median_income",
                     "tax_rates_2020",
                     "revenue_municipality_final",
-                    "covid_employment")
+                    "covid_employment",
+                    "share_women",
+                    "dea_robust")
 objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
@@ -1223,6 +1284,7 @@ df <-
   left_join(unemployment_rate_2020, by = "INE") |> 
   left_join(target, by = "INE") |> 
   left_join(population, by = "INE") |> 
+  left_join(share_women, by = "INE") |> 
   left_join(covid_employment, by = "INE") |> 
   left_join(n_firms, by = "INE") |> 
   left_join(avg_age_final, by = "INE") |> 
@@ -1244,13 +1306,7 @@ df <-
   df |>
   mutate(per_capita_MUN = total_MUN/pop_total,
          pop_density = pop_total/ area_sqkm,
-         per_capita_contracts = contracts_mean_2020/pop_total,
-         n_firms = as.numeric(n_firms),
-         revenue_tax_share = revenue_tax/total_revenue_MUN,
-         revenue_grants_share = revenue_grants/total_revenue_MUN,
-         revenue_other_share = revenue_other/total_revenue_MUN,
-         per_capita_revenue = total_revenue_MUN/total_revenue_MUN) |> 
-  select(- revenue_tax, -revenue_grants, -revenue_other, -total_revenue_MUN)
+         per_capita_contracts = contracts_mean_2020/pop_total) 
 ```
 
 ### Renaming fields of expenditure
