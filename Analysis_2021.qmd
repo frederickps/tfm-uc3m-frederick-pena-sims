@@ -214,7 +214,7 @@ Data chosen II
 share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection
 
 
-### Adjusting party data
+### CREATE OTHER category Adjusting party data 
 
 for statistical information
 

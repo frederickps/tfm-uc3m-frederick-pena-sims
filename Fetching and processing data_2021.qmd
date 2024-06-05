@@ -1226,6 +1226,42 @@ political_leadership_CCAA <-
   mutate(party_ccaa = as.factor(party_ccaa))
 ```
 
+### Ideology
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10864869/
+
+https://zenodo.org/records/10066112
+
+```{r}
+tribble(
+  ~PARTY, ~ID_INDEX,
+  "PSOE", 4.01,
+  "ERC (Sólo en Cataluña)", 3.03,
+  "UPN (Sólo en Navarra)", 8.22,
+  "PP", 7.83,
+  "Junts (Sólo en Cataluña)", 5.7,
+  "CC (Sólo en Canarias)", 5.98,
+  "VOX", 9.37,
+  "PDeCAT", 5.5,
+  "Nueva Canarias (Sólo en Canarias)", 5.25,
+  "Podemos", 2.43,
+  "En Comú Podem (Sólo en Cataluña)", 3.1,
+  "BNG (Sólo en Galicia)", 2.73,
+  "IU", 2.27,
+  "CUP (Sólo en Cataluña)", 1.84,
+  "Més Compromís (Sólo en Comunidad Valenciana)", 2.75,
+  "Ciudadanos", 6.71,
+  "EAJ-PNV (Sólo en País Vasco)", 6.42,
+  "PRC (Sólo en Cantabria)", 5.17,
+  "Más País", 3.02,
+  "EH Bildu (Sólo en País Vasco y Navarra)", 2.31,
+  "Teruel Existe (Sólo en provincia de Teruel)", 4.75,
+  "Elkarrekin Podemos", 2.98,
+  "PNC", 5.2
+)
+```
+
+
 ## Tax codes
 
 Taxation levied by municipalities
