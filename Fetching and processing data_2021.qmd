@@ -399,9 +399,8 @@ revenue_municipality_final <-
          revenue_other = financial_assets + financial_liabilities + property_income + sale_investments) |> 
   mutate(revenue_tax_share = revenue_tax/total_revenue_MUN,
          revenue_grants_share = revenue_grants/total_revenue_MUN,
-         revenue_other_share = revenue_other/total_revenue_MUN,
-         per_capita_revenue = total_revenue_MUN/total_revenue_MUN) |> 
-  select(INE, revenue_tax_share, revenue_grants_share, revenue_other_share, per_capita_revenue)
+         revenue_other_share = revenue_other/total_revenue_MUN) |> 
+  select(INE, revenue_tax_share, revenue_grants_share, revenue_other_share)
 ```
 
 ## CCAA expenditure
@@ -523,7 +522,10 @@ spending_CCAA_final <-
   select(CODAUTO, total_CCAA, per_capita_CCAA,share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection)
 ```
 
-ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection \
+
+```{r}
+
+```
 
 ## Contracts
 
@@ -550,10 +552,10 @@ contracts <-
          Contratos_serv = `Contratos  Servicios`) |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
   mutate(Contratos_total = ifelse(Contratos_total == "<5", 2.5, as.numeric(Contratos_total)),
-         share_contracts_agri = (Contratos_agri/Contratos_total)*100,
-         share_contracts_indu = (Contratos_indu/Contratos_total)*100,
-         share_contracts_con = (Contratos_cons/Contratos_total)*100,
-         share_contracts_serv = (Contratos_serv/Contratos_total)*100) |> 
+         share_contracts_agri = if_else(Contratos_total == 0, 0,(Contratos_agri/Contratos_total)*100), # if no contracts there cannot be a share
+         share_contracts_indu = if_else(Contratos_total == 0, 0,(Contratos_indu/Contratos_total)*100),
+         share_contracts_con = if_else(Contratos_total == 0, 0,(Contratos_cons/Contratos_total)*100),
+         share_contracts_serv = if_else(Contratos_total == 0, 0,(Contratos_serv/Contratos_total)*100)) |> 
   group_by(INE) |> 
   summarise(contracts_mean_2020 = mean(Contratos_total),
             share_contracts_agri = mean(share_contracts_agri, na.rm = T),
@@ -639,7 +641,6 @@ population <-
   population |> 
   mutate(greater_20k = as.factor(if_else(pop_total > 20000, 1,0)))
 ```
-
 
 ### Share women
 
@@ -731,14 +732,14 @@ n_firms  <-
   mutate(n_firms = as.numeric(n_firms),
          municipio = str_replace(municipio, "^(\\S+) ", "\\1_"),
          n_firms_service = as.numeric(n_firms_service),
+         n_firms = ifelse(is.na(n_firms), 0, n_firms),
          n_firms_service = if_else(is.na(n_firms_service), 0, n_firms_service),
-         share_firms_service = (n_firms_service/n_firms)*100) |> 
+         share_firms_service = if_else(n_firms == 0, 0,(n_firms_service/n_firms)*100)) |> 
   separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
-  mutate(n_firms = ifelse(is.na(n_firms), 0, n_firms)) |> 
   select(-NOMBRE, -n_firms_service)
 ```
 
-## Target - Difference in unemployment rate
+## DEA Target I - Difference in unemployment rate
 
 Calculating the average monthly difference in unemployment between 2023 and 2022
 
@@ -935,12 +936,12 @@ unemployment_2020_monthly <-
 Problem: no December 2020 data available
 
 ```{r}
-target <- 
+diff_ue <- 
   unemployment_2021_monthly |> 
   left_join(unemployment_2020_monthly, by = c("INE", "mes")) |> 
-  mutate(target = ue_mes_2021 - ue_mes_2020) |> 
+  mutate(diff_ue = ue_mes_2021 - ue_mes_2020) |> 
   group_by(INE) |> 
-  summarise(target = mean(target, na.rm = T))
+  summarise(diff_ue = mean(diff_ue, na.rm = T))
 ```
 
 ## Unemployment rate (2020)
@@ -968,16 +969,15 @@ unemployment_2020 <-
          Paro_sin_emp = "Paro Sin empleo Anterior") |> 
   mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) |> # 2.5 because in between 0 and 5
   mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)),
-         share_ue_service = (Paro_servicio/Paro_total)*100,
-         share_ue_construction = (Paro_constr/Paro_total)*100,
-         share_ue_industry = (Paro_indu/Paro_total)*100,
-         share_ue_agriculture = (Paro_agri/Paro_total)*100,
-         share_ue_wo_job = (Paro_sin_emp/Paro_total)*100) |> 
+         share_ue_service = ifelse(Paro_total == 0, 0,(Paro_servicio/Paro_total)*100),
+         share_ue_construction = ifelse(Paro_total == 0, 0,(Paro_constr/Paro_total)*100),
+         share_ue_industry = ifelse(Paro_total == 0, 0,(Paro_indu/Paro_total)*100),
+         share_ue_agriculture = ifelse(Paro_total == 0, 0,(Paro_agri/Paro_total)*100),
+         share_ue_wo_job = ifelse(Paro_total == 0, 0,(Paro_sin_emp/Paro_total)*100)) |> 
   select(-c(Paro_servicio, Paro_constr, Paro_indu, Paro_agri, Paro_sin_emp))
 ```
 
 Adding december data
-
 
 ```{r, results='hide'}
 folder_path <- "Data_2020/paro_diciembre_2020"
@@ -1003,11 +1003,12 @@ for (i in seq_along(excel_files)) {
          Paro_sin_emp = ...14) |> 
   mutate(INE = as.character(INE),
          INE = if_else(nchar(INE) == 4, paste0("0", INE), INE),
-         share_ue_service = (Paro_servicio/Paro_total)*100,
-         share_ue_construction = (Paro_constr/Paro_total)*100,
-         share_ue_industry = (Paro_indu/Paro_total)*100,
-         share_ue_agriculture = (Paro_agri/Paro_total)*100,
-         share_ue_wo_job = (Paro_sin_emp/Paro_total)*100) |> 
+         Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)),
+         share_ue_service = ifelse(Paro_total == 0, 0,(Paro_servicio/Paro_total)*100),
+         share_ue_construction = ifelse(Paro_total == 0, 0,(Paro_constr/Paro_total)*100),
+         share_ue_industry = ifelse(Paro_total == 0, 0,(Paro_indu/Paro_total)*100),
+         share_ue_agriculture = ifelse(Paro_total == 0, 0,(Paro_agri/Paro_total)*100),
+         share_ue_wo_job = ifelse(Paro_total == 0, 0,(Paro_sin_emp/Paro_total)*100)) |> 
   drop_na() |> 
   select(-c(Paro_servicio, Paro_constr, Paro_indu, Paro_agri, Paro_sin_emp))
   
@@ -1019,6 +1020,9 @@ unemployment_2020_dec <- do.call(rbind, all_data)
 
 # rbind to unemployment data
 unemployment_2020 <- rbind(unemployment_2020, unemployment_2020_dec)
+
+
+
 ```
 
 Social Security data for active population
@@ -1102,7 +1106,7 @@ unemployment_rate_2020 <-
   select(INE, ue_pct_2020, share_ue_service, share_ue_construction, share_ue_industry, share_ue_agriculture, share_ue_wo_job)
 ```
 
-## Target II - Income
+## DEA Target II - Income
 
 choosing median income by consumption unit
 
@@ -1123,7 +1127,7 @@ median_income <-
 
 ## Covid - employment data
 
-Adding information of share of businesses providing essential services in covid pandemic 
+Adding information of share of businesses providing essential services in covid pandemic
 
 Adding information on share of employment providing essential services in Covid pandemic
 
@@ -1141,7 +1145,6 @@ covid_employment <-
   mutate(share_essential_employment = as.numeric(share_essential_employment)) |> 
   select(INE, share_essential_business, share_essential_employment)
 ```
-
 
 ## Political leadership
 
@@ -1276,7 +1279,6 @@ ideology <-
   
 ```
 
-
 Merging with municipal and CCAA data
 
 ```{r}
@@ -1286,7 +1288,6 @@ political_leadership_CCAA <-
   mutate(party_ccaa_id = ID_INDEX) |> 
   select(CCAA, CODAUTO, party_ccaa, party_ccaa_id)
 ```
-
 
 ```{r}
 political_leadership_mun <- 
@@ -1298,9 +1299,8 @@ political_leadership_mun <-
   left_join(ideology, by = c("party_mun" = "PARTY")) |>
   mutate(party_mun_id = ID_INDEX) |> 
   select(INE, party_mun, party_mun_id)
-
-sum(is.na(political_leadership_mun$party_mun_id))
 ```
+
 1968 NAs
 
 Score will be crated when dfs are merged
@@ -1332,7 +1332,7 @@ tax_rates_2020 <-
 ```{r}
 objects <- ls()
 object_to_keep <- c("df_spen_imp_mun_tidy",
-                    "target",
+                    "diff_ue",
                     "unemployment_rate_2020",
                     "population", 
                     "n_firms", 
@@ -1346,8 +1346,7 @@ object_to_keep <- c("df_spen_imp_mun_tidy",
                     "tax_rates_2020",
                     "revenue_municipality_final",
                     "covid_employment",
-                    "share_women",
-                    "dea_robust")
+                    "share_women")
 objects_to_remove <- setdiff(objects, object_to_keep)
 rm(list = objects_to_remove)
 ```
@@ -1361,7 +1360,7 @@ df <-
   df_spen_imp_mun_tidy |> 
   left_join(dist_cap, by =  "INE") |> 
   left_join(unemployment_rate_2020, by = "INE") |> 
-  left_join(target, by = "INE") |> 
+  left_join(diff_ue, by = "INE") |> 
   left_join(population, by = "INE") |> 
   left_join(share_women, by = "INE") |> 
   left_join(covid_employment, by = "INE") |> 
@@ -1385,7 +1384,9 @@ df <-
   df |>
   mutate(per_capita_MUN = total_MUN/pop_total,
          pop_density = pop_total/ area_sqkm,
-         per_capita_contracts = contracts_mean_2020/pop_total) 
+         per_capita_contracts = contracts_mean_2020/pop_total,
+         per_capita_n_firms = n_firms/pop_total) |> 
+  select(-c(contracts_mean_2020, total_CCAA, total_MUN))
 ```
 
 ### Ideology score
@@ -1403,10 +1404,6 @@ Missing ideology score will be imputed (around 1000 NAs)
 ```{r}
 df <- 
   df |> 
-  relocate(party_mun, .after = NOMBRE) |> 
-  relocate(c(CCAA, party_ccaa), .after = CODAUTO) |> 
-  relocate(per_capita_MUN, .after = total_MUN) |> 
-  relocate(c(per_capita_CCAA, total_CCAA), .before = total_MUN) |> 
   rename(employment_promotion = "Fomento del Empleo",
          general_services = "Servicios de carácter general",
          pub_safety_mobility = "Seguridad y movilidad ciudadana",
@@ -1434,15 +1431,12 @@ df <-
          other_econ = "Otras actuaciones de carácter económico") 
 ```
 
-### Adjusting budget of Ceuta and Melilla
+### Deleting Ceuta and Melilla
 
 ```{r}
 df <- 
   df |> 
-  mutate(per_capita_CCAA = if_else(CCAA == "Ceuta", per_capita_MUN, per_capita_CCAA),
-         per_capita_CCAA = if_else(CCAA == "Melilla", per_capita_MUN, per_capita_CCAA)) |> # Ceuta has the same budget on the CCAA as municipal level
-  mutate(total_CCAA = if_else(CCAA == "Ceuta", total_MUN, total_CCAA),
-         total_CCAA = if_else(CCAA == "Melilla", total_MUN, total_CCAA))
+  filter(!NOMBRE == "Ceuta" & !NOMBRE == "Melilla")
 ```
 
 ### Filtering out NA values for target values
@@ -1450,7 +1444,7 @@ df <-
 ```{r}
 df_final <- 
   df |> 
-  filter(!is.na(target)) |> 
+  filter(!is.na(diff_ue)) |> 
   filter(!is.na(median_inc_con_unit))
 ```
 
