@@ -525,78 +525,6 @@ non_zero_vars <- non_zero_vars[-1]
 non_zero_vars
 ```
 
-#### Data chosen I - CCAA per capita
-
-[1] "party_munOTROS"                    "party_munPSOE"                     "party_munN.ADS."                  
- [4] "party_munUCIN"                     "party_munAxSI"                     "party_munBNG"                     
- [7] "party_munPAR"                      "party_munUPL"                      "party_ccaaERC"                    
-[10] "party_ccaaPNV"                     "party_ccaaPSOE"                    "general_services"                 
-[13] "environment"                       "social_services"                   "agr_farm_fish"                    
-[16] "tax_fin_admin"                     "public_debt"                       "health"                           
-[19] "education"                         "infrastructure"                    "employment_promotion"             
-[22] "sports"                            "pub_transportation"                "area_sqkm"                        
-[25] "ue_pct_2020"                       "pop_share_foreigners"              "pop_share_wk_age"                 
-[28] "pop_share_retirees"                "share_essential_business"          "share_essential_employment"       
-[31] "rural_prop_tax"                    "special_prop_tax"                  "min_coef_turn_tax"                
-[34] "per_capita_ccaa_general_services"  "per_capita_ccaa_security"          "per_capita_ccaa_economic"         
-[37] "per_capita_ccaa_culture"           "per_capita_ccaa_social_protection" "pop_density"                      
-[40] "per_capita_contracts"              "revenue_tax_share"               
-
-#### Data chosen II
-[1] "party_munPP"                  "party_munOTROS"               "party_munPSOE"               
- [4] "party_munN.ADS."              "party_munUCIN"                "party_munAxSI"               
- [7] "party_munBNG"                 "party_munPAR"                 "party_munUPL"                
-[10] "party_ccaaERC"                "party_ccaaPNV"                "party_ccaaPRC"               
-[13] "party_ccaaPSOE"               "general_services"             "environment"                 
-[16] "social_services"              "agr_farm_fish"                "tax_fin_admin"               
-[19] "public_debt"                  "health"                       "education"                   
-[22] "infrastructure"               "employment_promotion"         "sports"                      
-[25] "pub_transportation"           "area_sqkm"                    "ue_pct_2020"                 
-[28] "pop_share_foreigners"         "pop_share_wk_age"             "pop_share_retirees"          
-[31] "share_essential_business"     "share_essential_employment"   "rural_prop_tax"              
-[34] "special_prop_tax"             "min_coef_turn_tax"            "share_ccaa_general_services" 
-[37] "share_ccaa_economic"          "share_ccaa_culture"           "share_ccaa_social_protection"
-[40] "pop_density"                  "per_capita_contracts"         "revenue_tax_share" 
-
-#### Data chosen III
- [1] "party_munPP"                  "party_munOTROS"               "party_munPSOE"                "party_munN.ADS."              "party_munUCIN"               
- [6] "party_munBNG"                 "party_munPAR"                 "party_munUPL"                 "party_ccaaERC"                "party_ccaaPNV"               
-[11] "party_ccaaPSOE"               "general_services"             "environment"                  "social_services"              "agr_farm_fish"               
-[16] "tax_fin_admin"                "public_debt"                  "health"                       "education"                    "infrastructure"              
-[21] "employment_promotion"         "sports"                       "pub_transportation"           "pensions"                     "r_and_d"                     
-[26] "area_sqkm"                    "ue_pct_2020"                  "share_ue_construction"        "share_ue_industry"            "share_ue_agriculture"        
-[31] "share_ue_wo_job"              "pop_share_foreigners"         "pop_share_wk_age"             "pop_share_retirees"           "share_women"                 
-[36] "share_essential_employment"   "share_firms_service"          "share_contracts_agri"         "share_contracts_con"          "rural_prop_tax"              
-[41] "special_prop_tax"             "min_coef_turn_tax"            "revenue_tax_share"            "share_ccaa_general_services"  "share_ccaa_economic"         
-[46] "share_ccaa_culture"           "share_ccaa_social_protection" "pop_density"                  "per_capita_contracts"    
-
-#### Data chosen IV - Ideology score
-
- [1] "general_services"            "environment"                 "social_services"             "agr_farm_fish"               "tax_fin_admin"              
- [6] "public_debt"                 "health"                      "education"                   "infrastructure"              "employment_promotion"       
-[11] "trans_public_agencies"       "other_econ"                  "pub_transportation"          "r_and_d"                     "area_sqkm"                  
-[16] "ue_pct_2020"                 "share_ue_construction"       "share_ue_industry"           "share_ue_agriculture"        "pop_share_foreigners"       
-[21] "pop_share_wk_age"            "pop_share_retirees"          "share_women"                 "share_essential_employment"  "share_firms_service"        
-[26] "share_contracts_agri"        "share_contracts_con"         "rural_prop_tax"              "special_prop_tax"            "revenue_tax_share"          
-[31] "revenue_grants_share"        "share_ccaa_general_services" "share_ccaa_security"         "share_ccaa_economic"         "share_ccaa_housing_services"
-[36] "share_ccaa_culture"          "pop_density"                 "per_capita_contracts"        "ideology_score"  
-Data chosen V - n_firms exogenous variable
-
-[1] "general_services"            "environment"                 "social_services"            
- [4] "agr_farm_fish"               "tax_fin_admin"               "public_debt"                
- [7] "health"                      "education"                   "infrastructure"             
-[10] "employment_promotion"        "other_econ"                  "pub_transportation"         
-[13] "r_and_d"                     "area_sqkm"                   "ue_pct_2020"                
-[16] "share_ue_construction"       "share_ue_industry"           "share_ue_agriculture"       
-[19] "pop_share_foreigners"        "pop_share_wk_age"            "pop_share_retirees"         
-[22] "greater_20k1"                "share_women"                 "share_essential_employment" 
-[25] "share_firms_service"         "share_contracts_agri"        "share_contracts_con"        
-[28] "urban_prop_tax"              "rural_prop_tax"              "special_prop_tax"           
-[31] "min_coef_turn_tax"           "revenue_tax_share"           "party_ccaa_id"              
-[34] "share_ccaa_general_services" "share_ccaa_security"         "share_ccaa_economic"        
-[37] "share_ccaa_housing_services" "share_ccaa_culture"          "pop_density"                
-[40] "per_capita_contracts"  
-
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
 
@@ -609,9 +537,6 @@ df_model_final <-
 
 # all_of(non_zero_vars), dea_robust, greater_20k, party_mun, party_ccaa, INE, NOMBRE
 ```
-
-Hypothesis: covid employment data makes models overfit --\> too accurate AND decreases R-squared. How?
-
 
 #### Training and testing
 
@@ -1384,6 +1309,47 @@ df_ml$dea_robust_log <- NULL
 df_ml$dea_robust_3 <- NULL
 ```
 
+### FINALIZE Visualizing remaining municipalities
+
+Where is the difference
+
+```{r}
+m <-
+  df_spen_imp_mun_tidy |>
+  mutate(CODAUTO_data = CODAUTO) |> 
+  group_by(CODAUTO_data) |> 
+  distinct(INE) |> 
+  count(CODAUTO_data)
+# adding missing community 
+new_row <- data.frame(CODAUTO_data = "19", n = 0)
+m <- m |> 
+  bind_rows(new_row)
+
+o <- 
+  codigo_municipio |>
+  mutate(CODAUTO_original = CODAUTO) |> 
+  group_by(CODAUTO_original) |> 
+  distinct(INE) |> 
+  count(CODAUTO_original)
+
+difference_n_mun <- o |> 
+  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
+  mutate(difference = n.x - n.y,
+         proportion = (difference/n.x)*100)
+
+plot1 <-
+  difference_n_mun |> 
+  ggplot()+
+  geom_col(aes(CODAUTO_original, proportion)) +
+  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
+            vjust = -0.4,
+            size = 2.5) +
+  labs(title = "Share of missing Municipalities by Autonomous Region") +
+  theme_minimal()
+
+plot1
+```
+
 ## Feature selection
 
 ### Lasso regression
@@ -1480,16 +1446,19 @@ rf_tune_final$finalModel$importance
 summary(rf_tune_final$finalModel)
 
 plot(rf_tune_final)
+
+rf_tune_final$bestTune
 ```
 
 RMSE was used to select the optimal model using the smallest value.
-The final value used for the model was mtry = 56.
+The final value used for the model was mtry = 55.
 
 #### Results
-67.1
 
-RMSE   Rsquared        MAE 
-0.03868612 0.69773528 0.02959235
+0.04116895    0.6681352   0.03160596
+
+  RMSE   Rsquared        MAE 
+0.03872794 0.69762432 0.02965313 
 
 
 ```{r}
@@ -1500,23 +1469,29 @@ postResample(pred = model_results$rf,  obs = model_results$dea_robust)
 ```
 ### XG Boost
 
+
+                  objective = "reg:squarederror",
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
+
+tune_grid <- expand.grid(
+  nrounds = c(1500),
+  max_depth = c(10, 15),
+  eta = c(0.005, 0.1),
+  gamma = c(0.001, 0.000001),
+  colsample_bytree = c(0.8),
+  min_child_weight = c(5),
+  subsample = c(0.7)
+)
 
 set.seed(123)
 xgb_tune <- train(dea_robust ~., 
                   data = train.data,
                   method = "xgbTree",
                   preProc=c('scale','center'),
-                  objective = "reg:squarederror",
                   trControl = ctrl,
-                  tuneGrid = expand.grid(nrounds = c(1000, 1500), 
-                                         max_depth = c(6,8,10), 
-                                         eta = c(0.005, 0.01, 0.1),
-                                         gamma = c(0.025, 0.001, 0.01),
-                                         colsample_bytree = c(0.4, 0.6, 0.8),
-                                         min_child_weight = c(1, 3, 5),
-                                         subsample = c( 0.7, 0.8)))
+                  tuneGrid = tune_grid)
 ```
 
 ```{r}
@@ -1529,12 +1504,11 @@ postResample(pred = model_results$xg_boost,  obs = model_results$dea_robust)
 xgb_tune$results
 
 varImp(xgb_tune)
-
-plot(varImp(xgb_tune))
-
-plot(xgb_tune)
 ```
 
+Results
+eta   max_depth gamma colsample_bytree min_child_weight subsample nrounds RMSE Rsquared   MAE
+0.005	10	0.001	0.8	5	0.7	1500	0.03982445	0.6859576   0.03032696
 
 ### Catboost
 
@@ -1544,10 +1518,16 @@ catboost_model <- catboost(
   data = train_data,
   verbose = FALSE, # Set to TRUE for verbose output
   iterations = 100, # Number of boosting iterations
-  learning_rate = 0.1, # Learning rate
-  depth = 6, # Depth of trees
-  loss_function = "RMSE" # Loss function
+  learning_rate = 0.1, 
+  depth = 10, # Depth of trees
+  loss_function = "RMSE" 
 )
+```
+
+### Model selection
+
+```{r}
+model_results
 ```
 
 

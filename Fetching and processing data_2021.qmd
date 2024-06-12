@@ -206,46 +206,6 @@ n_distinct(df_spen_imp_mun_tidy$INE)
 ```
 
 6358 municipalities
-
-Where is the difference
-
-```{r}
-m <-
-  df_spen_imp_mun_tidy |>
-  mutate(CODAUTO_data = CODAUTO) |> 
-  group_by(CODAUTO_data) |> 
-  distinct(INE) |> 
-  count(CODAUTO_data)
-# adding missing community 
-new_row <- data.frame(CODAUTO_data = "19", n = 0)
-m <- m |> 
-  bind_rows(new_row)
-
-o <- 
-  codigo_municipio |>
-  mutate(CODAUTO_original = CODAUTO) |> 
-  group_by(CODAUTO_original) |> 
-  distinct(INE) |> 
-  count(CODAUTO_original)
-
-difference_n_mun <- o |> 
-  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
-  mutate(difference = n.x - n.y,
-         proportion = (difference/n.x)*100)
-
-plot1 <-
-  difference_n_mun |> 
-  ggplot()+
-  geom_col(aes(CODAUTO_original, proportion)) +
-  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
-            vjust = -0.4,
-            size = 2.5) +
-  labs(title = "Share of missing Municipalities by Autonomous Region") +
-  theme_minimal()
-
-ggsave("Data_2020/Plotting missing municipalities.png", bg = "white")
-```
-
 ### Final data set for expenditure per municipality
 
 ```{r}
