@@ -10,10 +10,31 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 ## Analysis
 
+### Install unusual packages
+
+```{r}
+install.packages('remotes')
+remotes::install_url('https://github.com/catboost/catboost/releases/download/v1.2.5/catboost-R-windows-x86_64-1.2.5.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
+```
+
+```{r}
+if (!requireNamespace("catboost", quietly = TRUE)) {
+  install.packages("catboost")
+}
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+if (!requireNamespace("xgboost", quietly = TRUE)) {
+  install.packages("xgboost")
+}
+```
+
+
 ### Library
 
 ```{r}
 options(scipen = 999)
+library(catboost)
 library(devtools)
 library(tidyverse)
 library(corrplot)
@@ -27,6 +48,7 @@ library(kernelshap)
 library(shapviz)
 library(pdp)
 library(factoextra)
+library(patchwork)
 ```
 
 ### Load data (if needed)
@@ -463,9 +485,7 @@ df_dea |>
 ```
 # DELETE
 
-## Feature Selection and Engineering
-
-### Deleting unnsecessary variables
+## Deleting unnsecessary variables
 
 All variables without additional meaning and variables used in estimating efficiency score+
 
@@ -1399,6 +1419,28 @@ non_zero_vars
 [81] "share_firms_service_3"             "share_contracts_serv_3"            "revenue_grants_share_3"            "share_ccaa_security_3"            
 [85] "share_ccaa_social_protection_3"   
 
+II
+
+[1] "CPRO03"                        "CPRO04"                        "CPRO05"                        "CPRO06"                        "CPRO09"                       
+ [6] "CPRO10"                        "CPRO11"                        "CPRO12"                        "CPRO13"                        "CPRO14"                       
+[11] "CPRO16"                        "CPRO18"                        "CPRO19"                        "CPRO20"                        "CPRO21"                       
+[16] "CPRO22"                        "CPRO23"                        "CPRO24"                        "CPRO26"                        "CPRO28"                       
+[21] "CPRO29"                        "CPRO31"                        "CPRO33"                        "CPRO34"                        "CPRO35"                       
+[26] "CPRO37"                        "CPRO38"                        "CPRO39"                        "CPRO40"                        "CPRO41"                       
+[31] "CPRO42"                        "CPRO43"                        "CPRO45"                        "CPRO46"                        "CPRO47"                       
+[36] "CPRO48"                        "CPRO50"                        "social_services"               "tax_fin_admin"                 "health"                       
+[41] "employment_promotion"          "pensions"                      "share_ue_industry"             "pop_share_foreigners"          "share_contracts_agri"         
+[46] "share_contracts_con"           "urban_prop_tax"                "share_ccaa_general_services"   "pop_density_low1"              "area_sqkm_low1"               
+[51] "environment_log"               "social_services_log"           "tax_fin_admin_log"             "public_debt_log"               "gov_bodies_log"               
+[56] "business_turism_sme_log"       "pub_transportation_log"        "ue_pct_2020_log"               "share_ue_construction_log"     "share_ue_industry_log"        
+[61] "share_ue_agriculture_log"      "share_ue_wo_job_log"           "pop_share_wk_age_log"          "pop_share_youth_log"           "share_firms_service_log"      
+[66] "share_contracts_con_log"       "revenue_other_share_log"       "share_ccaa_economic_log"       "pop_density_log"               "per_capita_contracts_log"     
+[71] "general_services_2"            "environment_2"                 "health_2"                      "infrastructure_2"              "rural_prop_tax_2"             
+[76] "share_ccaa_general_services_2" "per_capita_contracts_2"        "general_services_3"            "housing_urban_plan_3"          "area_sqkm_3"                  
+[81] "share_ue_industry_3"           "pop_share_youth_3"             "share_firms_service_3"         "share_contracts_serv_3"        "rural_prop_tax_3"             
+[86] "revenue_grants_share_3"        "share_ccaa_security_3
+
+
 
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "CPRO")&!startsWith(non_zero_vars, "greater")&!endsWith(non_zero_vars, "low1")]
@@ -1423,6 +1465,28 @@ train.data  <- df_ml_final[training.samples, ]
 test.data <- df_ml_final[-training.samples, ] 
 ```
 
+Checking distributions
+
+```{r}
+train.data |> 
+  ggplot()+
+  geom_histogram(aes(dea_robust), stat = "bin", bins = 160) +
+  theme_minimal() +
+  labs(title = "Distribution of DEA Efficiency Score",
+       y = "Count")
+```
+
+```{r}
+test.data |> 
+  ggplot()+
+  geom_histogram(aes(dea_robust), stat = "bin", bins = 160) +
+  theme_minimal() +
+  labs(title = "Distribution of DEA Efficiency Score",
+       y = "Count")
+```
+
+
+
 ### Training Random Forest
 
 ```{r}
@@ -1435,11 +1499,11 @@ rf_tune_final <- train(dea_robust ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 1000,
-                 tuneGrid = data.frame(mtry= c(45:58)),
+                 tuneGrid = data.frame(mtry= c(50:56)), # still need to run
                  importance = TRUE)
-
 ```
 
+Show R² of best model to show is not overfitting
 ```{r}
 rf_tune_final$finalModel$importance
 
@@ -1447,39 +1511,33 @@ summary(rf_tune_final$finalModel)
 
 plot(rf_tune_final)
 
-rf_tune_final$bestTune
+rf_tune_final_n$bestTune
+
+rf_tune_final_n$results
 ```
 
 RMSE was used to select the optimal model using the smallest value.
 The final value used for the model was mtry = 55.
 
-#### Results
-
-0.04116895    0.6681352   0.03160596
-
-  RMSE   Rsquared        MAE 
-0.03872794 0.69762432 0.02965313 
-
-
 ```{r}
 model_results <- data.frame(dea_robust = test.data$dea_robust)
-
 model_results$rf <- predict(rf_tune_final, test.data)
-postResample(pred = model_results$rf,  obs = model_results$dea_robust)
+
+# to store model performance metrics
+performance_metrics_rf <- postResample(pred = model_results$rf, obs = model_results$dea_robust)
+performance_metrics_rf
+model_performance <- data.frame(performance_metrics_rf)
 ```
-### XG Boost
-
-
-                  objective = "reg:squarederror",
+### Training Extreme Gradian Boosting
 
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
 
 tune_grid <- expand.grid(
   nrounds = c(1500),
-  max_depth = c(10, 15),
-  eta = c(0.005, 0.1),
-  gamma = c(0.001, 0.000001),
+  max_depth = c(10),
+  eta = c(0.005, 0.001),
+  gamma = c(0.000001),
   colsample_bytree = c(0.8),
   min_child_weight = c(5),
   subsample = c(0.7)
@@ -1496,7 +1554,9 @@ xgb_tune <- train(dea_robust ~.,
 
 ```{r}
 model_results$xg_boost <- predict(xgb_tune, test.data)
-postResample(pred = model_results$xg_boost,  obs = model_results$dea_robust)
+performance_metrics_xgb <- postResample(pred = model_results$xg_boost,  obs = model_results$dea_robust)
+performance_metrics_xgb
+model_performance <- cbind(data.frame(model_performance, performance_metrics_xgb))
 ```
 
 
@@ -1513,57 +1573,258 @@ eta   max_depth gamma colsample_bytree min_child_weight subsample nrounds RMSE R
 ### Catboost
 
 ```{r}
-catboost_model <- catboost(
-  formula = target ~ .,
-  data = train_data,
-  verbose = FALSE, # Set to TRUE for verbose output
-  iterations = 100, # Number of boosting iterations
-  learning_rate = 0.1, 
-  depth = 10, # Depth of trees
-  loss_function = "RMSE" 
-)
+ctrl <- trainControl(method = "cv", number = 5)
+```
+
+```{r}
+# Specify the features and the target
+features <- names(df_ml_final)[names(df_ml_final) != "dea_robust"]
+target <- "dea_robust"
+
+# Convert data to catboost pool
+train_pool <- catboost.load_pool(data = train.data[, features], label = train.data[[target]])
+test_pool <- catboost.load_pool(data = test.data[, features],label = test.data[[target]])
+
+fit_params <- list(iterations = 300,
+                   learning_rate = 0.1,
+                   depth = 10,
+                   loss_function = 'RMSE',
+                   l2_leaf_reg = 20,
+                   use_best_model = TRUE,
+                   od_type = "Iter")
+
+# Train the CatBoost model
+catboost_tune <- catboost.train(train_pool, params = fit_params, test_pool = test_pool)
+```
+Performance on test set
+
+```{r}
+# Make predictions on the test data
+pred <- catboost.predict(catboost_tune, test_pool)
+model_results$catboost <- pred
+
+# storing it in model performance table
+performance_metrics_cat <- postResample(pred = model_results$catboost, obs = model_results$dea_robust)
+performance_metrics_cat
+model_performance <- cbind(data.frame(model_performance, performance_metrics_cat))
 ```
 
 ### Model selection
 
 ```{r}
-model_results
+model_performance
 ```
-
 
 ## Interpretation
 
-```{r}
-varImp(rf_tune_final)
+### Variable importance
 
-plot(varImp(rf_tune_final))
+Creating my own plot for consistency
+
+```{r}
+var_imp <- varImp(xgb_tune)
+
+# Convert the variable importance data to a data frame
+var_imp_df <- as.data.frame(var_imp$importance)
+var_imp_df$Variables <- rownames(var_imp_df)
+
+unique(var_imp_df$Variables)
+
+
+# renamed labels of first thirty variables
+new_labels <- c(
+  "share_ccaa_security_3" = "Share of Security Spending in CCAA (^3)",
+  "share_ccaa_general_services" = "Share of General Services Spending in CCAA",
+  "share_ue_agriculture_log" = "Share of Unemployed from Agriculture Sector (Log)",
+  "pop_share_foreigners" = "Share of Foreigners in Population",
+  "ue_pct_2020_log" = "Unemployment Percentage 2020 (Log)",
+  "pop_share_wk_age_log" = "Share of Working Age Population (Log)",
+  "pop_share_youth_log" = "Share of Youth (Log)",
+  "share_contracts_agri" = "Share of New Contracts in Agriculture Sector",
+  "per_capita_contracts_log" = "Average New Contracts per Capita and Month (Log)",
+  "pop_density_log" = "Population Density (Log)",
+  "revenue_grants_share_3" = "Share of Revenue from Grants (^3)",
+  "share_ccaa_economic_log" = "Share of Economic Spending in CCAA (Log)",
+  "share_ccaa_general_services_2" = "Share of General Services Spending in CCAA (Log)",
+  "pop_total_x_pop_density" = "Population Total x Density",
+  "employment_promotion" = "Share of Employment Promotion Spending",
+  "share_ue_industry" = "Share of Unemployment from Industry Sector",
+  "share_ue_construction_log" = "Share of Unemployment from Construction Sector (Log)",
+  "general_services_2" = "Share of General Services Spending (^2)",
+  "share_firms_service_log" = "Share of Firms in Service Sector (Log)",
+  "share_contracts_serv_3" = "Share of New Contracts per Capita and Month in Service Sector",
+  "pop_density_X_area_sqkm" = "Population Density x Area (in SQKM)",
+  "share_ue_wo_job_log" = "Share of Unemployed without a Prior Job (Log)",
+  "housing_urban_plan_3" = "Share of Housing and Urban Planning Spending (^3)",
+  "revenue_other_share_log" = "Share of Revenue from Different Sources (Log)",
+  "area_sqkm_3" = "Area in SQKM (^3)",
+  "social_services" = "Share of Social Services Spending",
+  "pop_total_x_area_sqkm" = "Population Total x Area (in SQKM)",
+  "gov_bodies_log" = "Government Bodies (Log)",
+  "environment_log" = "Share of Environment Spending (Log)"
+)
+
+# Plot showing first thirty variables
+var_imp_df |>
+  filter(Overall > 3.25) |> 
+  ggplot(aes(x = reorder(Variables, Overall), y = Overall)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Variable Importance Extreme Gradiant Boosting Model", x = "", y = "Variable Importance") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 5.3))+ 
+  scale_x_discrete(labels = new_labels)
+```
+
+```{r}
+ggplot(df_ml_final) +
+    geom_point(aes(x = revenue_grants_share_3, y = pop_total_x_area_sqkm)) +
+    theme_minimal() 
 ```
 
 
 ### PDP
 
+####Policy
+
 ```{r}
-partial(rf_tune_final, pred.var = "employment_promotion", plot = TRUE, rug = T, train = train.data)
+# employment promotion
+partial_plot_emp <- partial(xgb_tune, pred.var = "employment_promotion", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_emp, aes(x = employment_promotion, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for Employment Promotion",
+       x = "Employment Promotion",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank()) + 
+  scale_x_continuous(breaks = seq(0, max(partial_df$employment_promotion), by = 5), minor_breaks = NULL)
+
+# General services
+partial_plot_gen <- partial(xgb_tune, pred.var = "general_services_2", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_gen, aes(x = general_services_2, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for General Services",
+       x = "General Services",
+       y = "Predicted Efficiency Score") +
+  theme_minimal()
+
+social_services
+general_services_2
+# General services
+partial_plot_soc <- partial(xgb_tune, pred.var = "social_services", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_soc, aes(x = social_services, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for Social Services",
+       x = "Social Services",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank())
+
+# Environmental spending
+partial_plot_env <- partial(xgb_tune, pred.var = "environment_log", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_env, aes(x = environment_log, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for Environment Spending",
+       x = "Environment Spending",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank()) 
+
+
+
+
+# use patchwork
+
+
 ```
 
+
+#### Structural
+
+```{r}
+# employment promotion
+partial_plot_sec_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_security_3", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_sec_ccaa, aes(x = share_ccaa_security_3, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for CCAA Security Spending",
+       x = "Cubed CCAA Security Spending (Share)",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank())
+
+# General services
+partial_plot_gen_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_general_services", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_gen_ccaa, aes(x = share_ccaa_general_services, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for CCAA General Services Spending",
+       x = "CCAA General Services Share",
+       y = "Predicted Efficiency Score") +
+  theme_minimal()
+
+# General services
+partial_plot_foreigners <- partial(xgb_tune, pred.var = "pop_share_foreigners", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_foreigners, aes(x = pop_share_foreigners, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for Share of Foreigners",
+       x = "Share of Foreigners",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank())
+
+# Environmental spending
+partial_plot_ue <- partial(xgb_tune, pred.var = "ue_pct_2020_log", plot = FALSE, rug = TRUE, train = train.data)
+# Graph
+ggplot(partial_plot_ue, aes(x = ue_pct_2020_log, y = yhat)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Partial Dependence Plot for Unemployment Percentage 2020",
+       x = "Unemployment Percentage 2020 (log)",
+       y = "Predicted Efficiency Score") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank()) 
+```
 ### SHAP
 
-Importance Bee Plot
+#### Importance Bee Plot
 
 ```{r}
 X <- train.data[sample(nrow(train.data), 1000), -which(names(train.data) == "dea_robust")]
 bg_X <- train.data[sample(nrow(train.data), 100), -which(names(train.data) == "dea_robust")]
 
-s <- kernelshap(rf_tune, X = X, bg_X = bg_X) 
+s <- kernelshap(xgb_tune, X = X, bg_X = bg_X) 
 sv <- shapviz(s)
-sv_importance(sv, kind = "bee", max_display = Inf)
+sv_importance(sv, kind = "bee", max_display = Inf) +
+  theme_minimal()
 ```
 
-Dependence
+#### Dependence Plot - Structural Features
+
+share_ccaa_security_3
+share_ccaa_general_services
+pop_share_foreigners
+ue_pct_2020_log
+CPRO
+pop_density_log
+pop_density_x_
 
 ```{r}
-v_select_1 <- c("per_capita_contracts", "pop_density", "pop_share_wk_age", "area_sqkm", "rural_prop_tax", "social_services", "employment_promotion", "party_mun")
+SHAP_structural <- c("per_capita_contracts", "pop_density", "pop_share_wk_age", "area_sqkm", "rural_prop_tax", "social_services")
 sv_dependence(sv, v = v_select_1)
+```
+
+
+#### Dependence Plots - Policy Features
+
+```{r}
+SHAP_policy <- c("employment_promotion", "environment_log","social_services","general_services_2")
+sv_dependence(sv, v = SHAP_policy) +
+  labs(title = "Custom Plot Title")
 ```
 
 ### Under and overachievers

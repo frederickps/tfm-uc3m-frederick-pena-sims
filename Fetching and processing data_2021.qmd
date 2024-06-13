@@ -1379,7 +1379,6 @@ df <-
          employee_benefits = "Otras prestaciones económicas a favor de empleados",
          social_services = "Servicios Sociales y promoción social",
          business_turism_sme = "Comercio, turismo y pequeñas y medianas empresas",
-         economic_expen_other = "Comercio, turismo y pequeñas y medianas empresas",
          gov_bodies = "Órganos de gobierno",
          sports = "Deporte",
          industry_eng = "Industria y energía",
