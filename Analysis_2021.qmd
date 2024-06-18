@@ -51,12 +51,15 @@ library(factoextra)
 library(patchwork)
 library(sf)
 library(scales)
+library(psych)
+library(officer)
+library(flextable)
 ```
 
 ### Load data (if needed)
 
 ```{r}
-df_final <- read.csv("Data_2020/TFM_data_2024-06-12.csv", colClasses = c(INE = "character", greater_20k = "factor")) |> 
+df_final <- read.csv("Data_2020/TFM_data_2024-06-12.csv", colClasses = c(INE = "character", greater_20k = "factor", CODAUTO = "character")) |> 
   select(-X)
 ```
 
@@ -174,12 +177,14 @@ mean(df_dea$per_capita_MUN)
 
 #### Distribution
 
+Included in Appendix of final paper 
+
 Distribution of DEA Efficiency Score
 
 ```{r}
 df_dea |> 
   ggplot()+
-  geom_histogram(aes(dea_robust), stat = "bin", bins = 100) +
+  geom_histogram(aes(dea_robust), stat = "bin", bins = 100, fill = "steelblue") +
   theme_minimal() +
   scale_x_continuous(labels = percent_format(), breaks = seq(0.6, 1, by = 0.05)) + 
   labs(y = "Count",
@@ -262,14 +267,22 @@ df_dea_map <- munic |>
   left_join(df_dea, by = "INE")  
 
 
-ggplot(esp_can) +
+Figure_2 <- 
+  ggplot(esp_can) +
   geom_sf() +
   geom_sf(data = can_prov) +
   geom_sf(data = can_box) + 
   geom_sf(data = df_dea_map, aes(fill = dea_robust), color = "black", size = .5)+
   scale_fill_gradient(na.value = "grey", low ="#FF0000",high = "#FFFFFF",name = "Efficiency\nScore") +
   theme_void()
+
+Figure_2
 ```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_2.png", dpi = 300, width = 10, height = 7, bg = "white")
+```
+
 
 Seems to follow the notion that more money does not necessarily produce more efficent labour market outcomes (but often adverse relationship)
 
@@ -321,7 +334,8 @@ Filtering less strong rotation values to get better overview
 
 Barplot of PCA (Second Prinicipal Component)
 ```{r}
-data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 2]) |>
+Figure_3 <- 
+  data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 2]) |>
   filter(rotation_value > 0.1 | rotation_value < -0.1) |> 
   ggplot(aes(x = variable, y = rotation_value)) +
   geom_bar(stat = "identity", fill = "steelblue") +
@@ -336,6 +350,7 @@ data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 2]
                               "dea_robust" = "Efficiency Score",
                               "per_capita_contracts" = "Contracts Per Capita", 
                               "revenue_grants_share" = "Share of Revenue Grants",
+                              "revenue_other_share" = "Revenue Other Sources",
                               "revenue_tax_share" = "Share of Revenue Tax", 
                               "rural_prop_tax" = "Rural Property Tax Rate",
                               "share_ccaa_culture" = "Culture (CCAA)", 
@@ -352,7 +367,14 @@ data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 2]
                               "share_ue_service" = "Share Unemployment from Service Sector",
                               "social_services" = "Social Services", 
                               "ue_pct_2020" = "Unemployment Rate (2020)"))
+
+Figure_3
 ```
+```{r}
+ggsave("Data_2020/Figures/Figure_3.png", bg ="white", width = 10, height = 7)
+```
+
+
 
 Higher 
 
@@ -384,6 +406,7 @@ df_clus <-
   select(-c(CODAUTO, CPRO, diff_ue, median_inc_con_unit, per_capita_CCAA, per_capita_MUN)) |> 
   drop_na()
 ```
+
 
 ```{r}
 fviz_nbclust(scale(df_clus), kmeans, method = 'silhouette', k.max = 40, nstart = 100)
@@ -422,17 +445,26 @@ custom_labels <- c(
 )
 
 
-centers |> 
+Figure_4 <- 
+  centers |> 
   select(general_services, pub_safety_mobility, social_services, infrastructure, employment_promotion, dist_prov_cap, ue_pct_2020, pop_share_retirees, share_contracts_serv, revenue_tax_share, pop_density, dea_robust, cluster, pop_share_foreigners, share_essential_employment, share_firms_service, housing_urban_plan) |>
   pivot_longer(-cluster, names_to = "variable", values_to = "value") |>
   ggplot(aes(x = variable, y = value, fill = cluster)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   facet_wrap(~ variable, scales = "free", labeller = labeller(variable = custom_labels)) +
-  labs(y = "Average Value", fill = "Cluster") +
+  labs(y = "Average Value", fill = "Cluster", x = "") + 
   theme_minimal() +
   theme(axis.text.x = element_blank(),
-        legend.position =  "bottom")
+        legend.position =  "bottom")+
+  scale_fill_manual(values = c("steelblue", "#FF0000"))
+
+Figure_4
 ```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_4.png", bg = "white", dpi = 300, width = 10, height = 7)
+```
+
 
 ### Correlation
 
@@ -457,7 +489,8 @@ df_corr_results <-
                cols = 1:65,
                names_to = "variable")
 
-df_corr_results |> 
+Figure_5 <- 
+  df_corr_results |> 
   filter(correlation > 0.1 | correlation < -0.1) |> 
   ggplot(aes(x = variable, y = correlation)) +
   geom_bar(stat = "identity", fill = "steelblue") +
@@ -494,76 +527,13 @@ df_corr_results |>
                               "share_ue_industry" = "Share Unemployment from Industry Sector",
                               "social_services" = "Social Services", 
                               "ue_pct_2020" = "Unemployment Rate (2020)"))
+
+Figure_5
 ```
-
-# DELETE
-### Employment promotion
-
 ```{r}
-df_dea |> 
-  ggplot()+
-  geom_histogram(aes(employment_promotion), stat = "bin", bins = 160) +
-  theme_minimal()
+ggsave("Data_2020/Figures/Figure_5.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
-```{r}
-df_dea |> 
-  ggplot(aes(employment_promotion, dea_robust))+
-  geom_point()
-```
-
-### Essential Sectors during Covid-19
-
-```{r}
-df_dea |> 
-  ggplot()+
-  geom_histogram(aes(share_essential_business), stat = "bin", bins = 160) +
-  theme_minimal()
-```
-
-```{r}
-df_dea |> 
-  ggplot(aes(share_essential_business, dea_robust))+
-  geom_point()
-```
-
-```{r}
-df_dea |> 
-  ggplot()+
-  geom_histogram(aes(share_essential_employment), stat = "bin", bins = 160) +
-  theme_minimal()
-```
-
-
-```{r}
-df_dea |> 
-  ggplot(aes(share_essential_business, dea_robust))+
-  geom_point()
-```
-
-### Creating Employment
-
-```{r}
-df_dea |> 
-  ggplot()+
-  geom_histogram(aes(share_ue_agriculture), stat = "bin", bins = 160) +
-  theme_minimal()
-```
-
-```{r}
-df_dea |> 
-  ggplot(aes(share_ue_agriculture, dea_robust))+
-  geom_point()
-```
-
-### Revenue generation
-
-```{r}
-df_dea |> 
-  ggplot(aes(social_services, dea_robust))+
-  geom_point()
-```
-# DELETE
 
 ## Deleting unnsecessary variables
 
@@ -586,19 +556,12 @@ imp <- mice(df_model, m = m, method= "rf")
 df_model_imp <- complete(imp, action=m)
 ```
 
-## Preliminary
-
+## Target variable evaluation
 
 ```{r}
 df_model_robust <- df_model_imp |> 
   select(-c(INE, NOMBRE, CCAA, CPRO)) 
 ```
-
-excluded:
-|> 
-  filter(!is.na(party_mun)) |> 
-  drop_na()
-  
 
 ## Modelling - Target normal - Random forest
 
@@ -957,7 +920,7 @@ log_df$model <- "Log"
 normal_df$model <- "Normal"
 log10_df$model <- "Log10"
 
-rf_metrics_table <- rbind(cube_df, log_df, normal_df, log10_df)
+rf_metrics_table <- rbind(normal_df, log_df,  log10_df, cube_df)
 
 rf_metrics_table
 ```
@@ -979,6 +942,24 @@ df_mae <-
   drop_na()
 ```
 
+### dea_robust variable
+
+```{r}
+Figure_6 <- 
+  df_mae |> 
+  ggplot()+
+  geom_point(aes(x = dea_robust, y = mae_rf)) +
+  theme_minimal() +
+  labs(y = "Absolute Error", x = "Predicted Efficiency Score")
+
+Figure_6
+```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_6.png", bg = "white", width = 10, height = 7, dpi = 300)
+```
+
+
 ### Correlation Analysis
 
 ```{r}
@@ -996,20 +977,14 @@ df_corr_mae_results <-
                cols = 1:69,
                names_to = "variable")
 
-ggplot(df_corr_mae_results, aes(x = variable, y = correlation)) +
+
+df_corr_mae_results |> 
+  filter(correlation > 0.1 | correlation < -0.1) |> 
+  ggplot(aes(x = variable, y = correlation)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   labs(title = "Correlation with absolute error", x = "Variable", y = "Correlation") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
-```
-
-#### dea_robust variable
-
-```{r}
-df_mae |> 
-  ggplot()+
-  geom_point(aes(x = dea_robust, y = mae_rf)) +
-  theme_minimal()
 ```
 
 #### Mapping MAE
@@ -1067,14 +1042,21 @@ CPRO_mae <- df_mae |>
   summarise(mae_rf = mean(mae_rf, na.rm = TRUE))
 
 # Create the graph
-ggplot(CPRO_mae, aes(x = CPRO, y = mae_rf)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
-  labs(title = "Mean Absolute Error by Province",
-       x = "Regional Area (CPRO)",
+Figure_7 <- 
+  ggplot(CPRO_mae, aes(x = CPRO, y = mae_rf)) +
+  geom_bar(stat = "identity", fill = "steelblue", color = "black") +
+  labs(x = "Regional Area Code",
        y = "Mean Absolute Error") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+Figure_7
 ```
+```{r}
+ggsave("Data_2020/Figures/Figure_7.png", bg = "white", width = 10, height = 7, dpi = 300)
+```
+
+Mean Absolute Error by Province
 
 Map
 
@@ -1232,47 +1214,6 @@ df_ml <-
 df_ml$dea_robust_2 <- NULL
 df_ml$dea_robust_log <- NULL
 df_ml$dea_robust_3 <- NULL
-```
-
-### FINALIZE Visualizing remaining municipalities
-
-Where is the difference
-
-```{r}
-m <-
-  df_spen_imp_mun_tidy |>
-  mutate(CODAUTO_data = CODAUTO) |> 
-  group_by(CODAUTO_data) |> 
-  distinct(INE) |> 
-  count(CODAUTO_data)
-# adding missing community 
-new_row <- data.frame(CODAUTO_data = "19", n = 0)
-m <- m |> 
-  bind_rows(new_row)
-
-o <- 
-  codigo_municipio |>
-  mutate(CODAUTO_original = CODAUTO) |> 
-  group_by(CODAUTO_original) |> 
-  distinct(INE) |> 
-  count(CODAUTO_original)
-
-difference_n_mun <- o |> 
-  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
-  mutate(difference = n.x - n.y,
-         proportion = (difference/n.x)*100)
-
-plot1 <-
-  difference_n_mun |> 
-  ggplot()+
-  geom_col(aes(CODAUTO_original, proportion)) +
-  geom_text(aes(CODAUTO_original, proportion, label = paste(round(proportion, 2),"%")),
-            vjust = -0.4,
-            size = 2.5) +
-  labs(title = "Share of missing Municipalities by Autonomous Region") +
-  theme_minimal()
-
-plot1
 ```
 
 ## Feature selection
@@ -1534,7 +1475,6 @@ qplot(model_results$xg_boost, model_results$dea_robust) +
 
 1. Step: Getting prediction information into main data frame
 
-
 ```{r}
 # Predictions for train data using xgb_tune
 predictions_test <- predict(xgb_tune, test.data)
@@ -1567,12 +1507,30 @@ mean(predictions$out==1)
 ```
 
 ```{r}
-ggplot(predictions, aes(x=fit, y=real))+
+Figure_8 <- 
+  ggplot(predictions, aes(x=fit, y=real))+
   geom_point(aes(color=out)) + theme(legend.position="none") +
   geom_ribbon(data=predictions,aes(ymin=lwr,ymax=upr),alpha=0.3) +
-  labs(x = "Predicted Efficiency",y="Efficiency")
+  labs(x = "Predicted Efficiency",y="Recorded Efficiency") +
+  scale_x_continuous(labels = scales::label_percent(), breaks = seq(0.60, 0.95, 0.05))+
+  scale_y_continuous(labels = scales::label_percent(), breaks = seq(0.60, 1, 0.05))+
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("#FF0000", "steelblue")) +
+  annotate("text", x = 0.7, y = 0.95, label = "Overachiever", angle = 0, hjust = 1, color = "black", size = 3) + # overachiever
+  geom_segment(aes(x = 0.7 , y = 0.948, xend = 0.748, yend = 0.925))+
+  annotate("text", x = 0.85, y = 0.6, label = "Underachiever", angle = 0, hjust = 0, color = "black", size = 3) + # underachiever
+  geom_segment(aes(x = 0.85 , y = 0.6, xend = 0.8009, yend = 0.655))+
+  annotate("text", x = 0.65, y = 0.8, label = "As predicted", angle = 0, hjust = 1, color = "black", size = 3) + # as predicted
+  geom_segment(aes(x = 0.65 , y = 0.8, xend = 0.675, yend = 0.737))
+
+Figure_8
 ```
-title = "Under- and Overachievers - Prediction Intervals", 
+
+```{r}
+ggsave("Data_2020/Figures/Figure_8.png", bg = "white", dpi = 300, width = 10, height = 7)
+```
+
 
 
 Putting information on how municipalities fared into one data frame
@@ -1587,6 +1545,7 @@ unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "overachiever"])
 
 unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "underachiever"])
 ```
+# DELETE
 ```{r}
 variables_to_plot <- c("general_services", "employment_promotion", "community_wellbeing", "environment", "social_services")
 
@@ -1602,8 +1561,6 @@ for (variable in variables_to_plot) {
   print(p)
 }
 ```
-
-
 Contextualize (MAE in the beginning)
 ```{r}
 df_achievement |> 
@@ -1622,6 +1579,8 @@ df_achievement |>
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
 ```
+# DELETE
+
 
 ### Variable importance
 
@@ -1666,21 +1625,29 @@ new_labels <- c(
   "area_sqkm_3" = "Area in SQKM (^3)",
   "social_services" = "Share of Social Services Spending",
   "pop_total_x_area_sqkm" = "Population Total x Area (in SQKM)",
-  "gov_bodies_log" = "Government Bodies (Log)",
+  "gov_bodies_log" = "Share of Government Bodies Spending (Log)",
   "environment_log" = "Share of Environment Spending (Log)"
 )
 
 # Plot showing first thirty variables
-var_imp_df |>
+Figure_9 <- 
+  var_imp_df |>
   filter(Overall > 3.25) |> 
   ggplot(aes(x = reorder(Variables, Overall), y = Overall)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   coord_flip() +
-  labs(title = "Variable Importance Extreme Gradiant Boosting Model", x = "", y = "Variable Importance") +
+  labs(x = "", y = "Variable Importance") +
   theme_minimal()+
   theme(plot.title = element_text(hjust = 5.3))+ 
   scale_x_discrete(labels = new_labels)
+
+Figure_9
 ```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_9.png", bg = "white", width = 10, height = 7, dpi = 300)
+```
+
 ### PDP
 
 ####Policy
@@ -1689,51 +1656,74 @@ var_imp_df |>
 # employment promotion
 partial_plot_emp <- partial(xgb_tune, pred.var = "employment_promotion", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_emp, aes(x = employment_promotion, y = yhat)) +
+p1 <- 
+  ggplot(partial_plot_emp, aes(x = employment_promotion, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for Employment Promotion",
-       x = "Employment Promotion",
+  labs(x = "Budget Share for Employment Promotion",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank()) + 
-  scale_x_continuous(breaks = seq(0, max(partial_df$employment_promotion), by = 5), minor_breaks = NULL)
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10)) + 
+  scale_x_continuous(breaks = seq(0, max(partial_plot_emp$employment_promotion), by = 5), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))+
+  scale_y_continuous(labels = scales::label_percent())
 
 # General services
 partial_plot_gen <- partial(xgb_tune, pred.var = "general_services_2", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_gen, aes(x = general_services_2, y = yhat)) +
+p2 <- 
+  ggplot(partial_plot_gen, aes(x = general_services_2, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for General Services",
-       x = "General Services",
+  labs(x = "Budget Share for General Services (²)",
        y = "Predicted Efficiency Score") +
-  theme_minimal()
+  theme_minimal()+
+  theme(axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10))+ 
+  scale_y_continuous(labels = scales::label_percent())
 
-social_services
-general_services_2
 # General services
 partial_plot_soc <- partial(xgb_tune, pred.var = "social_services", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_soc, aes(x = social_services, y = yhat)) +
+p3 <- 
+  ggplot(partial_plot_soc, aes(x = social_services, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for Social Services",
-       x = "Social Services",
+  labs(x = "Budget Share for Social Services",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank())
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10)) + 
+  scale_x_continuous(breaks = seq(0, max(partial_plot_soc$social_services), by = 10), minor_breaks = NULL, labels = scales::label_percent(scale = 1)) +
+  scale_y_continuous(labels = scales::label_percent())
 
 # Environmental spending
 partial_plot_grants <- partial(xgb_tune, pred.var = "revenue_grants_share_3", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_grants, aes(x = revenue_grants_share_3, y = yhat)) +
+p4 <- 
+  ggplot(partial_plot_grants, aes(x = revenue_grants_share_3, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for Share of Revenue from Grants",
-       x = "Share of Revenue from Grants (^3)",
+  labs(x = "Share of Revenue from Grants (³)",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank()) 
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10)) +
+  scale_y_continuous(labels = scales::label_percent())
 ```
 
-##### General Services and Pop Total
+```{r}
+Figure_9 <- p1 + p2 + p3 + p4
+
+Figure_9
+```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_9.png", width = 10, height = 7, dpi = 300, bg = "white")
+```
+
+ADD to Appendix
+
+General Services and Pop Total
 
 ```{r}
 ggplot(df_mae) +
@@ -1748,46 +1738,72 @@ ggplot(df_mae) +
 # employment promotion
 partial_plot_sec_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_security_3", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_sec_ccaa, aes(x = share_ccaa_security_3, y = yhat)) +
+p5 <- 
+  ggplot(partial_plot_sec_ccaa, aes(x = share_ccaa_security_3, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for CCAA Security Spending",
-       x = "Cubed CCAA Security Spending (Share)",
+  labs(x = "Budget Share CCAA Security (³)",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank())
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10))+
+  scale_y_continuous(labels = scales::label_percent())
 
 # General services
 partial_plot_gen_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_general_services", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_gen_ccaa, aes(x = share_ccaa_general_services, y = yhat)) +
+p6 <- 
+  ggplot(partial_plot_gen_ccaa, aes(x = share_ccaa_general_services, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for CCAA General Services Spending",
-       x = "CCAA General Services Share",
+  labs(x = "Budget Share CCAA General Services",
        y = "Predicted Efficiency Score") +
-  theme_minimal()
+  theme_minimal() +
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10))+
+  scale_y_continuous(labels = scales::label_percent())
 
 # General services
 partial_plot_foreigners <- partial(xgb_tune, pred.var = "pop_share_foreigners", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_foreigners, aes(x = pop_share_foreigners, y = yhat)) +
+p7 <- 
+  ggplot(partial_plot_foreigners, aes(x = pop_share_foreigners, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for Share of Foreigners",
-       x = "Share of Foreigners",
+  labs(x = "Share of Foreigners",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank())
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10))+
+  scale_y_continuous(labels = scales::label_percent()) + 
+  scale_x_continuous(breaks = seq(0, max(partial_plot_foreigners$pop_share_foreigners), by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
 
 # Environmental spending
 partial_plot_ue <- partial(xgb_tune, pred.var = "ue_pct_2020_log", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
-ggplot(partial_plot_ue, aes(x = ue_pct_2020_log, y = yhat)) +
+p8 <- 
+  ggplot(partial_plot_ue, aes(x = ue_pct_2020_log, y = yhat)) +
   geom_line(color = "steelblue") +
-  labs(title = "Partial Dependence Plot for Unemployment Percentage 2020",
-       x = "Unemployment Percentage 2020 (log)",
+  labs(x = "Unemployment Percentage 2020 (log)",
        y = "Predicted Efficiency Score") +
   theme_minimal() +
-  theme(axis.ticks = element_blank()) 
+  theme(axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 10),
+        axis.title.y = element_text(size = 10)) +
+  scale_y_continuous(labels = scales::label_percent())
 ```
+
+```{r}
+Figure_10 <- p5 + p6 + p7 + p8
+
+Figure_10
+```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_10.png", width = 10, height = 7, dpi = 300, bg = "white")
+```
+
+
 ### SHAP
 
 #### Importance Bee Plot
@@ -1806,21 +1822,143 @@ sv_importance(sv, kind = "bee", max_display = Inf) +
 
 ```{r}
 SHAP_structural <- c("pop_share_foreigners", "ue_pct_2020_log", "pop_density_log")
-sv_dependence(sv, v = SHAP_structural)
+
+
+customizations_structural <- list(
+  list(
+    legend_title = "Share of Unemployed\nfrom Agricultural Sector (log)",
+    x_axis_label = "Share of Foreigners"
+
+  ),
+  list(
+    legend_title = "Share of\nPopulationin Working Age (log)",
+    x_axis_label = "Unemployment Rate (log)"
+
+  ),
+  list(
+    legend_title = "Budget Share CCAA Security (³)",
+    x_axis_label = "Population Density (log)"
+
+  )
+)
+
+plots_structural <- lapply(seq_along(SHAP_structural), function(i) {
+  var <- SHAP_structural[i]
+  customizations_structural <- customizations_structural[[i]]
+  
+  plot <- sv_dependence(sv, v = var) + 
+    theme_minimal() +
+    labs(colour = customizations_structural$legend_title,
+         x = customizations_structural$x_axis_label) +
+    guides(colour = guide_colourbar(direction = "horizontal", title.position = "top"))
+  
+  return(plot)
+})
+
+# Display the first plot as an example
+p9 <- 
+  plots_structural[[1]] + 
+  scale_x_continuous(breaks = seq(0, 65, by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
+
+
+p10 <- 
+  plots_structural[[2]]
+
+p11 <- 
+  plots_structural[[3]]
+
+
+Figure_11 <- wrap_plots(p9, p10, p11, ncol = 1)
+
+Figure_11
 ```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_11.png", width = 10, height = 12, dpi = 300, bg = "white")
+```
+
+#### Dependence plots - Provinces
+
+```{r}
+SHAP_region <- "CPRO"
+Figure_12 <- 
+  sv_dependence(sv, v = SHAP_region) +
+  theme_minimal()+
+  guides(colour = guide_colourbar(direction = "horizontal", title.position = "top")) +
+  labs(color = "Share of Youth (log)",
+       x = "Province Codes")
+
+Figure_12
+```
+
+```{r}
+ggsave("Data_2020/Figures/Figure_12.png", dpi = 300, width = 12, height = 7, bg = "white")
+```
+
 
 #### Dependence Plots - Policy Features
 
 ```{r}
 SHAP_policy <- c("employment_promotion", "environment_log","social_services","general_services_2")
-sv_dependence(sv, v = SHAP_policy) 
+
+customizations_policy <- list(
+  list(
+    legend_title = "Share of Unemployed\nfrom Agricultural Sector (log)",
+    x_axis_label = "Budget Share Employment Promotion"
+
+  ),
+  list(
+    legend_title = "Share of Contracts\nin Agricultural Sector",
+    x_axis_label = "Budget Share Environment (log)"
+
+  ),
+  list(
+    legend_title = "Share of Contracts\nin Agricultural Sector",
+    x_axis_label = "Budget Share Social Services"
+
+  ),
+  list(
+    legend_title = "Share of Contracts\nin Construction Sector (log)",
+    x_axis_label = "Budget Share General Services (²)"
+
+  )
+)
+
+plots_policy <- lapply(seq_along(SHAP_policy), function(i) {
+  var <- SHAP_policy[i]
+  customizations_policy <- customizations_policy[[i]]
+  
+  plot <- sv_dependence(sv, v = var) + 
+    theme_minimal() +
+    labs(colour = customizations_policy$legend_title,
+         x = customizations_policy$x_axis_label) +
+    guides(colour = guide_colourbar(direction = "horizontal", title.position = "top"))
+  
+  return(plot)
+})
+
+
+p12 <- 
+  plots_policy[[1]] + 
+  scale_x_continuous(breaks = seq(0, 50, by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
+
+p13 <- 
+  plots_policy[[2]]
+
+p14 <- 
+  plots_policy[[3]] + 
+  scale_x_continuous(breaks = seq(0, 50, by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
+
+p15 <- 
+  plots_policy[[4]] 
+
+Figure_13 <- p12 + p13 + p14 + p15
+
+Figure_13
 ```
-#### Dependence plots 
 
 ```{r}
-SHAP_region <- "CPRO"
-sv_dependence(sv, v = SHAP_region) +
-  theme_minimal()
+ggsave("Data_2020/Figures/Figure_13.png", width = 14, height = 10, dpi = 300, bg = "white")
 ```
 
 
@@ -1898,12 +2036,106 @@ Figure_1
 ggsave("Data_2020/Figures/Figure_1.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
-### Data summary
+### Visualizing missing municipalities
 
+Where is the difference
 
 ```{r}
-library(table1)
+m <-
+  df_dea |>
+  mutate(CODAUTO_data = CODAUTO) |> 
+  group_by(CODAUTO_data, CCAA) |> 
+  distinct(INE) |> 
+  count(CODAUTO_data)
+# adding missing community 
+new_row <- data.frame(CODAUTO_data = c("18","19"), CCAA = c("Melilla", "Ceuta"),n = c(0, 0))
+m <- m |> 
+  bind_rows(new_row)
 
-table1(~ . - INE - CCAA - CPRO - NOMBRE, data = df_dea)
+# reading municipality declaration data
+codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
+  mutate(INE = paste0(CPRO, CMUN),
+         Provincia = as.integer(CPRO))
+
+o <- 
+  codigo_municipio |>
+  mutate(CODAUTO_original = CODAUTO) |> 
+  group_by(CODAUTO_original) |> 
+  distinct(INE) |> 
+  count(CODAUTO_original)
+
+difference_n_mun <- o |> 
+  left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
+  mutate(difference = n.x - n.y,
+         proportion = (difference/n.x)*100)
+
+difference_n_mun |> 
+  ggplot()+
+  geom_col(aes(CCAA, proportion), fill = "steelblue") +
+  geom_text(aes(CCAA, proportion, label = paste(round(proportion, 2),"%")),
+            vjust = -0.4,
+            size = 2.5) + 
+  scale_y_continuous(labels = (scales::label_percent(scale = 1))) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Share (%)",
+       x = "")
+```
+
+
+### Data summary
+
+```{r}
+summary_df <- psych::describe(df_summary)
+
+summary_df$variable <- rownames(summary_df)
+summary_df <- summary_df[, c("variable", colnames(summary_df)[1:(ncol(summary_df)-1)])]
+
+summary_df <- summary_df[, !colnames(summary_df) %in% c("trimmed", "mad", "skew", "kurtosis")]
+
+ft <- flextable(summary_df)
+ft <- set_caption(ft, caption = "Summary Statistics of df_summary")
+
+ft <- theme_vanilla(ft) |> 
+  autofit() |> 
+  set_table_properties(width = 0.8, layout = "autofit") |> # smaller table
+  align(j = 2:ncol(summary_df), align = "center", part = "all") |>   # Center text in all columns except the first
+  colformat_double(j = 2:ncol(summary_df), digits = 2) |>  # Format numbers to 2 decimal places
+  fontsize(size = 8, part = "all") 
+
+doc <- read_docx()
+
+# Add the flextable to the Word document
+doc <- body_add_flextable(doc, value = ft)
+
+# Save the Word document
+print(doc, target = "Data_2020/Tables/summary_table.docx")
+```
+
+### Template
+
+```{r}
+# Create an empty data frame with the same structure but 6 rows
+empty_df <- summary_df[1:6, ]
+empty_df[] <- NA  # Fill the data frame with NA to make it empty
+
+# Create a flextable from the empty data frame
+ft_empty <- flextable(empty_df)
+
+# Customize the flextable for better readability
+ft_empty <- ft_empty %>%
+  theme_vanilla() %>%
+  autofit() %>%
+  set_table_properties(width = 0.8, layout = "autofit") %>%
+  align(j = 2:ncol(empty_df), align = "center", part = "all")
+
+# Create a new Word document
+doc_empty <- read_docx()
+
+# Add the empty flextable to the new Word document
+doc_empty <- body_add_flextable(doc_empty, value = ft_empty)
+
+# Save the new Word document
+print(doc_empty, target = "Data_2020/Tables/empty_template_table.docx")
 ```
 
