@@ -24,24 +24,25 @@ library(stringr)
 
 ## Municipal spending data
 
-Explain
-
-From: <https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL>
+Spending and revenue data is taken from the [Ministry for Finance](https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL) and is provided as a Microsoft Access file. Hence a connection is first established.
 
 ```{r}
 unique(odbc::odbcListDrivers()[[1]])
 
-dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Data_2020/Liquidaciones2020.mdb"
+# change into adequate source
+dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Data_2020/Liquidaciones2020.mdb" 
 
 con <- dbConnect(odbc::odbc(),
                  Driver = "Microsoft Access Driver (*.mdb, *.accdb)",
                  DBQ = dbname)
 
 tables <- dbListTables(con)
+
+# to gain insights into names of available tables
 print(tables)
 ```
 
-Getting tables I want –\> keeping cdfgr as character to keep preceeding zeroes
+Tables are identified and subsequently loaded into the environment. To keep the code classifying the purpose of a given expenditure as is - with leading 0s - it is classified as a character variable.
 
 ```{r}
 
@@ -50,75 +51,38 @@ tb_funcionalPorEntes <- dbReadTable(con, "v_funcionalPorEntes", colClasses = c(F
 tb_cuentasProgramas <- dbReadTable(con, "tb_cuentasProgramas")
 ```
 
-### Applying official classification
-
-Joining codigo municipio for official classification
-
-Creating common ID
-
-Joining
+Now, Autonomous Community and Province association willbe added. Moreover, by performing an `inner_join()` only municipalities matched by the official registry of Spanish municipalities, gathered on the Instituto Nacional de Estadísticas (INE), deleting non-eligible local entities. Finally, the information on the purpose of expenditure is added.
 
 ```{r}
 codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_names = TRUE) |> 
   mutate(INE = paste0(CPRO, CMUN),
-         Provincia = as.integer(CPRO))
+         Provincia = as.integer(CPRO)) # creating INE code from province and municipalitiy code
 
 tb_funcionalPorEntes <- 
   tb_funcionalPorEntes |>
-  mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+")))
+  mutate(INE = as.character(str_extract_all(CodBDGEL, "^\\d+"))) # extracting INE code
 
 tb_funcionalPorMunicipios <- 
   tb_funcionalPorEntes |> 
   inner_join(codigo_municipio, by = "INE") |> 
-  inner_join(tb_cuentasProgramas, by ="cdfgr")
+  inner_join(tb_cuentasProgramas, by ="cdfgr") # adding the purposes 
 ```
 
-### Cleaning municipalities
+Next, both municipalities and purpose of expenditure need to be cleaned. Concerning municipalities, only entities not beginning with "Mc" - identifying Mancomunidades - and with concurring names in the official registry and the original table from the spending data. For the expenditure purpose, only those classifications with two characters are kept. Expenditure purposes are classified modular, with the first digit providing information on a very broad level of the purpose of expenditure, with every added digit giving more fine-grained information. At the same time each superior level encloses the amount of money spent on a given purpose.
 
-Standardizing codification and reducing number of spending reasons
-
-```{r}
-Madrid <- tb_funcionalPorMunicipios |> 
-  arrange(poblacion) |> 
-  slice_head(n = 30) |> 
-  select(INE, cdfgr, importe, nombre)
-```
-
-What variables do I want to have?
-
-Only codes with two characters
-
--   more fine grained than the overarching descriptions but not too fine grained to produce
-
--   not too fine grained to create too many variables
-
--   Problem: certain municipalities will not have had an expenditure for every two charachter reason
-
-Also, deleting all mancomunidades from the dataframe.
-
-Also deleting every Entidad de ámbito territorial inferior al municipio (EATIM)
-
--   NOMBRE from codigo_municipio and NombreEnte form database
+Take, for example, digit "1" identifying expenditure on the administration. "11" may identify expenditure on public employees while "12" may refer to upkeep of public buildings. At most, four digit codes classify expenditure. Every amount related to any digit code starting with "1" is reflected in the amount coinciding with digit "1".
 
 ```{r}
 tb_funcionalPorMunicipios <-
   tb_funcionalPorMunicipios |> 
-  mutate(cdfgr = trimws(as.character(cdfgr)),
-         NombreEnte = trimws(as.character(NombreEnte)),
+  mutate(cdfgr = trimws(as.character(cdfgr)), # trimming to get rid of blank spaces
+         NombreEnte = trimws(as.character(NombreEnte)), 
          NOMBRE = trimws(as.character(NOMBRE))) |> 
   filter(nchar(cdfgr) == 2 & !str_detect(NombreEnte, "^Mc") 
          & NombreEnte == NOMBRE)
 ```
 
-### Adding total spending (per reason)
-
-Total spending per reason
-
-Group by 'cdfgr' and 'INE', then calculate the (total) sum of spending
-
-summarized spending contains one total amount spent per reason
-
-total importe contains the total money spent by the municipality in 2020
+Following, two values are created. `total_spending` refers to the sum of all spending per municipality on a given expenditure purpose. `total_importe` refers to the total spending per municipality. Each values are stored in separate data frames and then joined.
 
 ```{r}
 summarized_spending <- tb_funcionalPorMunicipios |> 
@@ -132,33 +96,17 @@ total_importePorMunicipio <- tb_funcionalPorMunicipios |>
   ungroup()
 ```
 
-Keeping only one spending amount and spending reason per municipality
-
---\> because in the base table each spending reason is listed as many times as money was spent on it
-
---\> keeping only one then keeps only one reason + total spending combination
-
 ```{r}
 tb_importePorPrograma <-
   tb_funcionalPorMunicipios |> 
-  left_join(summarized_spending, by = c("cdfgr", "INE")) |>
-  left_join(total_importePorMunicipio, by = "INE") |> 
+  left_join(summarized_spending, by = c("cdfgr", "INE")) |> # adding spending per municipality and expenditure purpose
+  left_join(total_importePorMunicipio, by = "INE") |> # adding total spending per municipality
   group_by(INE, cdfgr) |> 
-  distinct(cdfgr, .keep_all = T) |> 
+  distinct(cdfgr, .keep_all = T) |> # to make sure only one expenditure purpose per municipality and expenditure purpose is kept
   ungroup()
-
-# verifying that each funds destination is only listed once now per municipality
-verification1 <-
-  tb_importePorPrograma |> 
-  filter(INE == "02001") |> 
-  count(cdfgr)
-
-verification1
 ```
 
-### Calculating share of spending
-
-Now calculating the share of each spending
+Now, share of spending for every expenditure purpose is calculated.
 
 ```{r}
 tb_partedeImporte <-
@@ -167,20 +115,9 @@ tb_partedeImporte <-
   mutate(share_spending = (total_spending/total_importe)*100) |> 
   ungroup() |> 
   mutate(nombre = trimws(nombre))
-
-# verifying that each funds destination is only listed once now per municipality
-verification2 <-
-  tb_importePorPrograma |> 
-  group_by(INE) |>
-  mutate(share_spending = (total_spending/total_importe)*100) |>
-  ungroup() |> 
-  filter(INE == "28079") |> 
-  count(cdfgr)
-
-verification2
 ```
 
-Pivoting this data frame wider
+To generate a tidy data frame, the data is pivoted wider.
 
 ```{r}
 df_spending_mun_tidy <-
@@ -190,7 +127,7 @@ df_spending_mun_tidy <-
               values_from = share_spending)
 ```
 
-Imputing zeroes as NAs mean that the municipality did not spend money on a given end.
+Since some municipalities di not spend any money on a given purpose, NAs are imputed with 0.
 
 ```{r}
 df_spen_imp_mun_tidy <- 
@@ -199,14 +136,11 @@ df_spen_imp_mun_tidy <-
   rename(total_MUN = total_importe)
 ```
 
-### Number of municipalities
-
 ```{r}
 n_distinct(df_spen_imp_mun_tidy$INE)
 ```
 
-6358 municipalities
-### Final data set for expenditure per municipality
+6358 municipalities are left in the data.
 
 ```{r}
 head(df_spen_imp_mun_tidy)
@@ -214,27 +148,15 @@ head(df_spen_imp_mun_tidy)
 
 ## Municipal revenue data
 
+Municipal revenue data is recovered very similarly, as it is stored in the same data base.
+
 ```{r}
 tb_economicaPorEntes <- dbReadTable(con, "v_economicaPorEntes", colClasses = c(F, F, F, F, F, F, F, "character", F, F, F))
 
 tb_cuentasEconomica <- dbReadTable(con, "tb_cuentasEconomica")
 ```
 
-follow roughly previous steps - on
-
-v_economicaPorEntes
-
---\> filter - tipreig == "I"
-
---\> only cdcta with 1 character
-
---\> transfers and taxes per capita (maybe other) + total
-
---\> adding names of municipalities (for verification)
-
-### Applying offical classification
-
-codigo list for municipalitie and the respective
+Revenue is stored under "I" and is subsequently filtered out of the data containing amounts and source, respectively. This time only sources at the level of 1 charahter are kept, since such fine-grained infromation is not necessary for this set of data. Names of municipalities are added for cross-checking. Using the same technique as before, all non-eligible local entities are filtered out.
 
 ```{r}
 tb_economicaPorEntes <- 
@@ -254,22 +176,6 @@ tb_economicaPorMunicipios <-
   inner_join(tb_cuentasEconomica, by ="cdcta")
 ```
 
-### Cleaning municipalities
-
-Standardizing codification and reducing number of spending reasons
-
-What variables do I want to have?
-
-Only codes with one character --\> reason:
-
--   least fine-grained data needed --\> total revenue and split up - revenue grants, revenue taxes, other
-
-Also, deleting all mancomunidades from the dataframe.
-
-Also deleting every Entidad de ámbito territorial inferior al municipio (EATIM)
-
--   NOMBRE from codigo_municipio and NombreEnte form database
-
 ```{r}
 tb_economicaPorMunicipios <- 
   tb_economicaPorMunicipios |> 
@@ -282,17 +188,7 @@ tb_economicaPorMunicipios <-
 
 ### Adding total spending (per reason)
 
-Total spending per revenue source
-
-Group by 'cdcta' and 'INE', then calculate the (total) sum of revenue
-
-summarized revenue contains one total amount spent per reason
-
-total importe contains the total money spent by the municipality in 2020
-
-Using importer
-
-Importer includes the recognized rights, which in this context means the revenues that have been formally acknowledged by the municipality for the given fiscal year. This metric will provide you with the most accurate figure for the total revenue that the municipality has recognized during that year, encompassing all sources of revenue that have been recorded as rights.
+Tota revenue and total revenue per source are calculated from the variable `importer` which refers to the revenues that have been formally acknowledged by the municipalitiy for the given fiscal year.
 
 ```{r}
 summarized_revenue <- tb_economicaPorMunicipios |> 
@@ -306,11 +202,7 @@ total_revenuePorMunicipio <- tb_economicaPorMunicipios |>
   ungroup()
 ```
 
-Keeping only one spending amount and spending reason per municipality
-
---\> because in the base table each spending reason is listed as many times as money was spent on it
-
---\> keeping only one then keeps only one reason + total spending combination
+The values are joined.
 
 ```{r}
 tb_revenue_per_source <-
@@ -323,19 +215,7 @@ tb_revenue_per_source <-
   select(INE, NOMBRE, nombre, total_revenue_per_source, total_revenue_per_mun)
 ```
 
-### Creating revnue stream categories
-
-Pivoting wider for variables
-
-Renaming for easier handling
-
-Zero imputation
-
-creating categories
-
-share calculation will be done at the end when merging with population data (share because Cifuentes + municipal budget balancing)
-
-to see how and why summarized see Cifuentes tables
+To classify the information more broadly, revenue information is pivoted wider, renamed to be more legible, and summed up accordingly. Lastly, shares of total revenues are calculated.
 
 ```{r}
 revenue_municipality_final <- 
@@ -363,15 +243,15 @@ revenue_municipality_final <-
   select(INE, revenue_tax_share, revenue_grants_share, revenue_other_share)
 ```
 
-## CCAA expenditure
+## Autonomous community expenditure
 
-https://www.igae.pap.hacienda.gob.es/sitios/igae/es-ES/Contabilidad/ContabilidadNacional/Publicaciones/Paginas/iacofogCA.aspx
+Expenditure information for Autonomous Communities is also found on the [Ministry for Finance'](https://www.igae.pap.hacienda.gob.es/sitios/igae/es-ES/Contabilidad/ContabilidadNacional/Publicaciones/Paginas/iacofogCA.aspx)webpage, however stored in one excel file with multiple pages, each page providing information on one Autonomous Community.
 
-repetetive procedure --\> hence function
+Since the procedure is repetitive, a function is created.
 
 ```{r}
 spending_CCAA <- 
-  function(data_file, sheet, CCAA){
+  function(data_file, sheet, CCAA){ # CCAA refers to the official CCAA code
   data <-
     read_excel(paste0("Data_2020/", data_file),
              sheet = sheet, skip = 6) |> 
@@ -387,7 +267,7 @@ spending_CCAA <-
          CODAUTO = ...2
 ) |> 
   select(CODAUTO, total, ccaa_general_services, ccaa_security, ccaa_economic, ccaa_housing_services, ccaa_health, ccaa_culture, ccaa_social_protection) |> 
-  mutate(across(2:9, ~ . * 1000000))
+  mutate(across(2:9, ~ . * 1000000)) # adjusting the metric
   
 data$CODAUTO <- CCAA
   
@@ -452,7 +332,7 @@ spending_CCAA_objects <- mget(ls(pattern = "^CCAA"))
 spending_CCAA <- do.call(rbind, spending_CCAA_objects)
 ```
 
-Reading CCAA 2020 population data to calculate spending per inhabitant Data from: https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html
+To provide expenditure information not only as share but also per capita (for total expenditure) population information for 2020 is added from the statistical office from [Murcia](https://econet.carm.es/inicio/-/crem/sicrem/PU_padron/cifof10/sec2_c1.html).
 
 ```{r}
 pop_CCAA <- 
@@ -465,7 +345,7 @@ pop_CCAA <-
   mutate(CODAUTO = as.character(ifelse(nchar(CODAUTO) == 1, paste0("0", CODAUTO), CODAUTO)))
 ```
 
-Merging spending data and population data
+Population data for 2020 is joined and shares are created.
 
 ```{r}
 spending_CCAA_final <- 
@@ -482,22 +362,11 @@ spending_CCAA_final <-
   select(CODAUTO, total_CCAA, per_capita_CCAA,share_ccaa_general_services, share_ccaa_security, share_ccaa_economic, share_ccaa_housing_services, share_ccaa_culture, share_ccaa_social_protection)
 ```
 
-
-```{r}
-
-```
-
 ## Contracts
 
-share temporary of all contracts
+Information on newly added contracts to the job data base is added from [INE](https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios).
 
-share service sector of all contracts
-
-Contrato: <https://datos.gob.es/es/catalogo/ea0021425-contratos-por-municipios>
-
-Manually changed data type to xlsx because csv did not work
-
--   creating new jobs / new employment
+Shares of contracts into different sectors are provided. Since data is given monthly, the mean share is calculated for every municipality.
 
 ```{r}
 contracts <- 
@@ -524,30 +393,28 @@ contracts <-
             share_contracts_serv = mean(share_contracts_serv, na.rm = T))
 ```
 
-## Distance From Provincial Capital
+## Geographical information
 
-Adding distance from provincial capital for proxy for inter-municipal mobility
-
-Code provided by Villamil
+Geographical information on the distance from the provincial capital, and the area in square kilometer is added via the subsequent script.
 
 ```{r}
 source("distcap.R")
 ```
 
-Changing data type of and adding a 0 in front of every INE code that only has 4 characters to standardize and render the code applicable.
+To later join with remaining data, the INE code is adjusted.
 
 ```{r}
 dist_cap <- 
   dist_cap |> 
   mutate(INE = as.character(INE)) |> 
-  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE))
+  mutate(INE = ifelse(nchar(INE) == 4, paste0("0", INE), INE)) # adding a 0 if INE code only with four characters
 ```
 
-## Population statistic
+## Population statistics
 
 ### Age groups
 
-<https://www.ine.es/jaxiT3/Tabla.htm?t=33571&L=0>
+Age groups are recovered from [INE](https://www.ine.es/jaxiT3/Tabla.htm?t=33571&L=0). Shares of age groups are calculated.
 
 ```{r}
 population <- 
@@ -556,8 +423,8 @@ population <-
 
 population <- 
   population |> 
-  filter(municipio == "1 de enero de 2020" | lead(municipio) == "1 de enero de 2022") |> 
-  mutate(across(.cols = -municipio, .fns = lead)) |> 
+  filter(municipio == "1 de enero de 2020" | lead(municipio) == "1 de enero de 2022") |> # INE and information on population are offset
+  mutate(across(.cols = -municipio, .fns = lead)) |> # getting all information per municpality in one row
   dplyr::slice(-n()) |> 
   filter(municipio != "1 de enero de 2020") |>
   mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> 
@@ -576,7 +443,6 @@ population <-
 
 # the population table stores values for Men and Women in rows rather than columns
 # grouping by municipality and only choosing highest total population
-
 population <- 
   population |> 
   group_by(INE) |> 
@@ -588,13 +454,7 @@ population <-
 
 ### Municipality size
 
-Different municipalities have different required expenditures
-
-More variables (How to make a variable out of it?) 0 – 5,0000 5,000 – 20,000 20,000 – 50,000 50,000 and above
-
-Creating data frame only with municipalities
-
-Adding dummy variable greater than 20,000
+From that data frame the factor variable `greater_20k` is calculated to differente between municipalities greater and equal or smaller than 20,000 inhabitants.
 
 ```{r}
 population <- 
@@ -603,6 +463,8 @@ population <-
 ```
 
 ### Share women
+
+More over, the share of women is calculated.
 
 ```{r}
 
@@ -613,7 +475,7 @@ share_women <-
   mutate(across(.cols = -municipio, .fns = lead)) |> 
   drop_na() |> 
   mutate(municipio = str_replace(municipio, "^(\\S+) ", "\\1_")) |> # replaces the space after the first word (INE) score with underscore and seperates it afterwards
-  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> 
+  separate(municipio, into = c("INE", "NOMBRE"), sep = "_") |> # creates INE code
   left_join(population, by = "INE") |> # required for total population information
   mutate(share_women = (num_women/pop_total)*100) |> 
   select(INE, share_women)
@@ -621,7 +483,9 @@ share_women <-
 
 ### Average age
 
--   saving in data frame because it takes too long
+The average age is calculated from a data frame providing information on the absolute amount of people with a given age.
+
+Information is stored in a separate data frame because processing the code takes too long.
 
 ```{r, eval=FALSE}
 avg_age_raw <- 
@@ -634,12 +498,13 @@ avg_age_clean <-
   rename_with(~ if_else(. == "municipio", ., gsub("\\D", "", .)), everything()) |> 
   filter(municipio == "1 de enero de 2020" | lead(municipio) == "1 de enero de 2022") |> 
   mutate(across(.cols = -municipio, .fns = lead)) |> 
-  slice(-n()) |> 
-  filter(municipio != "1 de enero de 2020" & municipio != "Total Nacional") |> 
+  slice(-n()) |> # again all information is moved into one row.
+  filter(municipio != "1 de enero de 2020" & municipio != "Total Nacional") |> # national information is removed
   group_by(municipio) |> 
   slice(1) |> 
   ungroup()
 
+#calculating weighted sum of age by pivoting data frame longer
 weighted_sum_age <-
   avg_age_clean |>
   pivot_longer(cols = 2:102, names_to = "age") |> 
@@ -649,7 +514,7 @@ weighted_sum_age <-
   summarize(weighted_sum = sum(weighted_age)) |> 
   ungroup()
 
-
+# calculating the total population
 total_n_people <-
   avg_age_clean |>
   pivot_longer(cols = 2:102, names_to = "age") |> 
@@ -657,6 +522,7 @@ total_n_people <-
   summarize(total_people = sum(value)) |> 
   ungroup()
 
+# adding the total population and calculating the average age from the weighted sum and total population
 avg_age_final <- 
   weighted_sum_age |> 
   inner_join(total_n_people, by = "municipio") |> 
@@ -677,11 +543,7 @@ avg_age_final <- read.csv("Data_2020/avg_age_final.csv", colClasses = c(INE = "c
 
 ## Number of firms
 
-share of firms in Comercio, transporte y hostelería
-
-<https://www.ine.es/jaxiT3/Tabla.htm?t=4721&L=0>
-
-Warning message because of notation in original table of 0 as ".".
+Total numer of firms and share of firms in service sector are recovered from [INE](https://www.ine.es/jaxiT3/Tabla.htm?t=4721&L=0).
 
 ```{r}
 n_firms  <- 
@@ -699,15 +561,13 @@ n_firms  <-
   select(-NOMBRE, -n_firms_service)
 ```
 
-## DEA Target I - Difference in unemployment rate
+## DEA Outcome I - Difference in unemployment rate
 
-Calculating the average monthly difference in unemployment between 2023 and 2022
-
-Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
-
-Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
+The first outcome variable is the average monthly difference in unemployment between 2021 and 2020. Absolute unemployment data is recovered from [INE](https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios), while social security information is provided by the [Ministry for Social Security](https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84).
 
 ### 2021
+
+To generate the monthly unemployment rate per municipality, unemployment and social security data are joined. Because social security data is only stored per province, a loop is created to load all the data.
 
 ```{r}
 unemployment_2021 <- 
@@ -779,6 +639,8 @@ unemployment_2021_monthly <-
 
 ### 2020
 
+The same is done for 2020.
+
 ```{r}
 unemployment_2020 <- 
   read_xlsx("Data_2020/Paro_por_municipios_2020.xlsx", skip = 1) |> 
@@ -789,9 +651,7 @@ unemployment_2020 <-
   mutate(Paro_total = ifelse(Paro_total == "<5", 2.5, as.numeric(Paro_total)))
 ```
 
-Adding the month of december
-
-<https://www.sepe.es/HomeSepe/que-es-el-sepe/estadisticas/datos-estadisticos/municipios/2020/diciembre.html>
+Because for every province, the unemployment data for december 2020 is not provided it is added mannually (from [here](https://www.sepe.es/HomeSepe/que-es-el-sepe/estadisticas/datos-estadisticos/municipios/2020/diciembre.html)).
 
 ```{r}
 # Setting the directory path where csv files are located
@@ -826,7 +686,7 @@ unemployment_2020_dec <- do.call(rbind, all_data)
 unemployment_2020 <- rbind(unemployment_2020, unemployment_2020_dec)
 ```
 
-Getting number of people in social security
+Again, social security information is recovered.
 
 ```{r, results='hide'}
 # Setting the directory path where csv files are located
@@ -893,7 +753,7 @@ unemployment_2020_monthly <-
 
 ### Difference
 
-Problem: no December 2020 data available
+Merging both data frames for 2020 and 2021, the monthly difference is calculated and subsequently, the yearly average is estimated.
 
 ```{r}
 diff_ue <- 
@@ -906,15 +766,7 @@ diff_ue <-
 
 ## Unemployment rate (2020)
 
-share of sector specific unemployed of all unemployed
-
-2020 data for unemployment
-
-Paro: <https://datos.gob.es/es/catalogo/ea0021425-paro-registrado-por-municipios>
-
-Social Security: https://www.seg-social.es/wps/portal/wss/internet/EstadisticasPresupuestosEstudios/Estadisticas/est8/est10/est305/c43ad8ea-fe79-4329-ac8e-e5758f3c4d7a/6609c55f-65e4-4e64-b1ab-8917fce27a84
-
-Unemployment = Paro / Paro + Social Security
+Additionally, to the yearly unemployment rate for 2020, share of unemployed from specific sectors is added as variables.
 
 ```{r}
 unemployment_2020 <- 
@@ -937,7 +789,7 @@ unemployment_2020 <-
   select(-c(Paro_servicio, Paro_constr, Paro_indu, Paro_agri, Paro_sin_emp))
 ```
 
-Adding december data
+December data is added manually.
 
 ```{r, results='hide'}
 folder_path <- "Data_2020/paro_diciembre_2020"
@@ -985,9 +837,7 @@ unemployment_2020 <- rbind(unemployment_2020, unemployment_2020_dec)
 
 ```
 
-Social Security data for active population
-
-Reading data
+Social security data is loaded into the environment.
 
 ```{r, results='hide'}
 # Setting the directory path where csv files are located
@@ -1017,7 +867,7 @@ for (i in seq_along(all_data)) {
 social_security_2020 <- bind_rows(all_data)
 ```
 
-Wrangling data
+Per municipality, the average number of people in social security noted employment.
 
 ```{r}
 social_security_2020 <- 
@@ -1033,7 +883,7 @@ social_security_2020 <-
   ungroup()
 ```
 
-Merging with unemployment table
+Averages for (shares of) unemployment is calculated. Following social security information is joined, and the unemployment rate is calculated.
 
 ```{r}
 unemployment_rate_2020 <- 
@@ -1053,14 +903,6 @@ unemployment_rate_2020 <-
 ```
 
 ```{r}
-unemployment_rate_2020 |> 
-  summarise(ue = sum(mean_ue), ss = sum(mean_ss)) |>
-  mutate(ue_pct = (ue/(ue + ss))*100)
-```
-
-Divergence of 1%
-
-```{r}
 unemployment_rate_2020 <- 
   unemployment_rate_2020 |>
   select(INE, ue_pct_2020, share_ue_service, share_ue_construction, share_ue_industry, share_ue_agriculture, share_ue_wo_job)
@@ -1068,9 +910,7 @@ unemployment_rate_2020 <-
 
 ## DEA Target II - Income
 
-choosing median income by consumption unit
-
---\> there are some NA values
+Median income per consumption unit is recoverd from INE.
 
 ```{r, results='hide'}
 median_income <- 
@@ -1087,13 +927,7 @@ median_income <-
 
 ## Covid - employment data
 
-Adding information of share of businesses providing essential services in covid pandemic
-
-Adding information on share of employment providing essential services in Covid pandemic
-
-Data: https://www.ine.es/jaxi/Tabla.htm?path=/COVID/dirce/l0/&file=01002.px&L=0
-
-Royal Decree: https://www.ine.es/covid/nota_tecnica_dirce.pdf
+Municipal information on the share of business and the share of unemployment declared as essential are recovered from [INE](https://www.ine.es/jaxi/Tabla.htm?path=/COVID/dirce/l0/&file=01002.px&L=0).
 
 ```{r}
 covid_employment <- 
@@ -1109,6 +943,8 @@ covid_employment <-
 ## Political leadership
 
 ### Municipality - Party of mayor
+
+To recover the information on the party of the mayor of a given municipality during 2020, a if, else_if structure is required.
 
 ```{r}
 political_leadership_mun <- 
@@ -1126,11 +962,7 @@ political_leadership_mun <-
 
 ### CCAA
 
-From: https://es.wikipedia.org/wiki/Anexo:Presidencias_auton%C3%B3micas_espa%C3%B1olas
-
-Code from https://www.ine.es/daco/daco42/codmun/cod_ccaa.htm
-
-Using datapasta
+Information on the governing party of the Autonomous Communities is recovered from [Wikipedia](https://es.wikipedia.org/wiki/Anexo:Presidencias_auton%C3%B3micas_espa%C3%B1olas) using the tribble function.
 
 ```{r}
 
@@ -1194,9 +1026,7 @@ political_leadership_CCAA <-
 
 ### Ideology
 
-https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10864869/
-
-https://zenodo.org/records/10066112
+Ideology scores are recovered from the following data set: [here](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10864869/). Values are noted in [PDF](https://zenodo.org/records/10066112).
 
 ```{r}
 ideology <- 
@@ -1239,7 +1069,7 @@ ideology <-
   
 ```
 
-Merging with municipal and CCAA data
+Ideology data is joined with municipal and Autonomous Community data.
 
 ```{r}
 political_leadership_CCAA <- 
@@ -1261,17 +1091,9 @@ political_leadership_mun <-
   select(INE, party_mun, party_mun_id)
 ```
 
-1968 NAs
-
-Score will be crated when dfs are merged
-
 ## Tax codes
 
-Taxation levied by municipalities
-
-https://serviciostelematicosext.hacienda.gob.es/SGFAL/ConsultaTipos/aspx/listado_municipiosm.aspx
-
-Getting property taxes based on type of property, construction work taxes, turnover weights
+Taxation levied by municipalities is recovered from [here](https://serviciostelematicosext.hacienda.gob.es/SGFAL/ConsultaTipos/aspx/listado_municipiosm.aspx).
 
 ```{r}
 tax_rates_2020 <- 
@@ -1287,7 +1109,9 @@ tax_rates_2020 <-
   select(INE, urban_prop_tax, rural_prop_tax, special_prop_tax, max_coef_turn_tax, min_coef_turn_tax)
 ```
 
-## REMOVE DEA List of useful dataframes
+## List of useful data-frames
+
+To reduce the number of objects in the environment, only objects subsequently used to create the final data frame are kept.
 
 ```{r}
 objects <- ls()
@@ -1313,8 +1137,6 @@ rm(list = objects_to_remove)
 
 ## Merging tables
 
--   also adding per capita spending municipality
-
 ```{r}
 df <- 
   df_spen_imp_mun_tidy |> 
@@ -1339,6 +1161,8 @@ df <-
 
 ### Per capita values
 
+Per capita variables are created and original variables are dropped.
+
 ```{r}
 df <- 
   df |>
@@ -1350,6 +1174,8 @@ df <-
 ```
 
 ### Ideology score
+
+The ideology score - mean of ideology of governing parties on the municipal and Autonomous Community level is calculated.
 
 ```{r}
 df <- 
@@ -1407,7 +1233,7 @@ df_final <-
   filter(!is.na(median_inc_con_unit))
 ```
 
-Saving data frame
+## Saving data frame
 
 ```{r}
 write.csv(df_final, paste("Data_2020/TFM_data_", Sys.Date(), ".csv", sep = ""))
