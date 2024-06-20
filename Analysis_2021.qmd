@@ -155,41 +155,39 @@ df_dea <-
 
 ### Efficiency score
 
-#### Output II - Difference
-
-```{r}
-mean(df_dea$diff_ue)
-```
-On the unemployment rate went down by almost 1%, as backed up by annual data
-
-#### Output II - Median Income per Consumption Unit
-
-```{r}
-mean(df_dea$median_inc_con_unit)
-```
-
-#### Input - Municipality Expenditure per Capita
-
-```{r}
-mean(df_dea$per_capita_MUN)
-```
-
-
-#### Distribution
+#### In Appendix - Distribution
 
 Included in Appendix of final paper 
 
 Distribution of DEA Efficiency Score
 
 ```{r}
-df_dea |> 
+mean_val <- mean(df_dea$dea_robust)
+median_val <- median(df_dea$dea_robust)
+min_val <- min(df_dea$dea_robust)
+
+Figure_B2 <- 
+  df_dea |> 
   ggplot()+
   geom_histogram(aes(dea_robust), stat = "bin", bins = 100, fill = "steelblue") +
   theme_minimal() +
   scale_x_continuous(labels = percent_format(), breaks = seq(0.6, 1, by = 0.05)) + 
   labs(y = "Count",
-       x = "Efficiency Score")
+       x = "Efficiency Score") +
+  # Add annotations
+  annotate("text", x = mean_val+0.05, y = Inf, label = paste("Mean:", percent(mean_val, accuracy = 0.1)), vjust = 2, color = "black", size = 3) +
+  geom_segment(aes(x = mean_val, xend = mean_val+0.05, y = 120, yend = mean_val+125), color = "black") +
+  annotate("text", x = median_val-0.07, y = Inf, label = paste("Median:", percent(median_val, accuracy = 0.1)), vjust = 2, color = "black", size = 3) +
+  geom_segment(aes(x = median_val, xend = median_val-0.07, y = 120, yend = median_val+125), color = "black") +
+  annotate("text", x = min_val+0.01, y = 50, label = paste("Min:", percent(min_val, accuracy = 0.1)), color = "black", size = 3)+
+  geom_segment(aes(x = min_val, xend = min_val+0.01, y = min_val, yend = 47), color = "black")
+
+Figure_B2
 ```
+```{r}
+ggsave(plot = Figure_B2, "Data_2020/Figures/Figure_B2.png", dpi = 300, bg = "white", width = 10, height = 7)
+```
+
 
 #### Most and least efficient municipalities
 
@@ -251,7 +249,7 @@ t_test_result
 
 A bit more pronounced if threshold difference between large and small municipality is greater.
 
-#### Map
+#### In Text - Map
 
 ```{r}
 esp_can <- esp_get_country() 
@@ -280,7 +278,7 @@ Figure_2
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_2.png", dpi = 300, width = 10, height = 7, bg = "white")
+ggsave(plot = Figure_2,"Data_2020/Figures/Figure_2.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
 
@@ -289,8 +287,6 @@ Seems to follow the notion that more money does not necessarily produce more eff
 North more inefficient than South
 
 ### PCA
-
-remove per_capita_revenue
 
 ```{r}
 df_pca <-
@@ -303,17 +299,22 @@ set.seed(53456)
 pca <- prcomp(df_pca, scale. = T)
 ```
 
-INCLUDED Appendix
+#### In Appendix - PC variance
 
 ```{r}
-fviz_screeplot(pca, addlabels = TRUE)
+screeplot <- fviz_screeplot(pca, addlabels = TRUE)
+
+Figure_B3 <- 
+  screeplot + ggtitle(NULL) +
+  theme_minimal()
+
+Figure_B3
 ```
 
-NOT INCLUDED
-
-shows how much information is in each column
-only 12% in one column
-using the second component 
+```{r}
+ggsave(plot = Figure_B3, "Data_2020/Figures/Figure_B3.png", dpi = 300, width = 10, height = 7, bg = "white")
+```
+ 
 
 Filtering less strong rotation values to get better overview
 
@@ -328,7 +329,7 @@ data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 1]
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-INCLUDED
+#### In Text - PC 2
 
 Filtering less strong rotation values to get better overview
 
@@ -371,12 +372,12 @@ Figure_3 <-
 Figure_3
 ```
 ```{r}
-ggsave("Data_2020/Figures/Figure_3.png", bg ="white", width = 10, height = 7)
+ggsave(plot = Figure_3,"Data_2020/Figures/Figure_3.png", bg ="white", width = 10, height = 7)
 ```
 
 
 
-Higher 
+REST NOT INCLUDED
 
 ```{r}
 data.frame(z1=pca$x[,1],z2=pca$x[,2]) %>% 
@@ -407,9 +408,18 @@ df_clus <-
   drop_na()
 ```
 
+#### Not Included - Optimal Cluster estimation
+```{r}
+fviz_nbclust <- fviz_nbclust(scale(df_clus), kmeans, method = 'silhouette', k.max = 40, nstart = 100)
+
+Figure_B4 <- fviz_nbclust + ggtitle(NULL) +
+  theme_minimal()
+
+Figure_B4
+```
 
 ```{r}
-fviz_nbclust(scale(df_clus), kmeans, method = 'silhouette', k.max = 40, nstart = 100)
+ggsave(plot = Figure_B4, "Data_2020/Figures/Figure_B4.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
 
@@ -418,7 +428,7 @@ cluster <- kmeans(df_clus, centers = 2, nstart = 100)
 ```
 
 
-INCLUDED
+#### In Text - Centers
 
 ```{r}
 # Assuming 'cluster' is your k-means result
@@ -462,11 +472,11 @@ Figure_4
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_4.png", bg = "white", dpi = 300, width = 10, height = 7)
+ggsave(plot = Figure_4,"Data_2020/Figures/Figure_4.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
 
-### Correlation
+### In Text -Correlation
 
 Spearman because most of the data is not normally distributed and relationships are not linear
 
@@ -531,11 +541,12 @@ Figure_5 <-
 Figure_5
 ```
 ```{r}
-ggsave("Data_2020/Figures/Figure_5.png", dpi = 300, width = 10, height = 7, bg = "white")
+ggsave(plot = Figure_5,"Data_2020/Figures/Figure_5.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
+## Data imputation
 
-## Deleting unnsecessary variables
+Deleting unnsecessary variables
 
 All variables without additional meaning and variables used in estimating efficiency score+
 
@@ -546,8 +557,6 @@ df_model <-
   df_dea |> 
   select(-c(CODAUTO, dist_prov_cap, per_capita_CCAA, per_capita_MUN, per_capita_n_firms, median_inc_con_unit, party_mun, party_ccaa, diff_ue))
 ```
-
-## Data imputation
 
 ```{r}
 m <- 5
@@ -716,14 +725,6 @@ rf_tune_log <- train(log(dea_robust) ~.,
                  ntree = 100,
                  tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
                  importance = TRUE)
-
-rf_tune_log$finalModel$importance
-
-rf_tune_log$results
-
-varImp(rf_tune_log)
-
-plot(varImp(rf_tune_log))
 ```
 
 ##### Results
@@ -801,14 +802,6 @@ rf_tune_log10 <- train(log10(dea_robust) ~.,
                  ntree = 100,
                  tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
                  importance = TRUE)
-
-rf_tune_log10$finalModel$importance
-
-rf_tune_log10$results
-
-varImp(rf_tune_log10)
-
-plot(varImp(rf_tune_log10))
 ```
 
 ##### Results
@@ -856,9 +849,6 @@ df_model_final <-
 # excluded party ccaa for the moment
 ```
 
-Hypothesis: covid employment data makes models overfit --\> too accurate AND decreases R-squared. How?
-
-
 #### Training and testing
 
 ```{r}
@@ -873,7 +863,6 @@ test.data_pre_cub <- df_model_final[-training.samples, ]
 # deleting INE and NOMBRE from train set to keep in test only
 train.data_pre_cub$INE <- NULL
 train.data_pre_cub$NOMBRE <- NULL
-
 ```
 
 #### Training RF
@@ -889,14 +878,6 @@ rf_tune_cube <- train((dea_robust)^(1/3) ~.,
                  ntree = 100,
                  tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
                  importance = TRUE)
-
-rf_tune_cube$finalModel$importance
-
-rf_tune_cube$results
-
-varImp(rf_tune_cube)
-
-plot(varImp(rf_tune_cube))
 ```
 
 ##### Results
@@ -907,7 +888,7 @@ test_results$rf_cube <- (test_results$rf_cube)^3
 rf_cube <- postResample(pred = test_results$rf_cube,  obs = test_results$dea_robust)
 ```
 
-#### Compare Results
+#### In Text - Compare Results
 
 ```{r}
 cube_df <- as.data.frame(t(rf_cube))
@@ -942,7 +923,7 @@ df_mae <-
   drop_na()
 ```
 
-### dea_robust variable
+### In Text - Efficiency and Absolute Error
 
 ```{r}
 Figure_6 <- 
@@ -956,11 +937,11 @@ Figure_6
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_6.png", bg = "white", width = 10, height = 7, dpi = 300)
+ggsave(plot = Figure_6,"Data_2020/Figures/Figure_6.png", bg = "white", width = 10, height = 7, dpi = 300)
 ```
 
 
-### Correlation Analysis
+### In Appendix - Correlation Analysis
 
 ```{r}
 df_corr_mae <-
@@ -978,16 +959,44 @@ df_corr_mae_results <-
                names_to = "variable")
 
 
-df_corr_mae_results |> 
+Figure_B6 <- 
+  df_corr_mae_results |> 
   filter(correlation > 0.1 | correlation < -0.1) |> 
   ggplot(aes(x = variable, y = correlation)) +
   geom_bar(stat = "identity", fill = "steelblue") +
-  labs(title = "Correlation with absolute error", x = "Variable", y = "Correlation") +
+  labs(x = "",
+       y = "Correlation") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 0.5)) 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_x_discrete(labels = c("area_sqkm" = "Area in Square KM",
+                              "avg_age" = "Average Age", 
+                              "business_turism_sme" = "Business, Tourism, and SMEs",
+                              "education" = "Education",
+                              "gov_bodies" = "Government Bodies",
+                              "n_firms" = "Absolute Number of Firms",
+                              "other_econ" = "Other Economic Spending",
+                              "pop_density" = "Population Density",
+                              "pop_share_youth" = "Share of Youth",
+                              "pop_total" = "Total Population",
+                              "pub_safety_mobility" = "Public Safety and Mobility", 
+                              "public_debt" = "Spending on Public Debt",
+                              "share_ccaa_housing_services" = "Housing Services (CCAA)",
+                              "share_ccaa_security" = "Security (CCAA)",  
+                              "share_contracts_con" = "Share Contracts Construction Sector",
+                              "share_essential_business" = "Share of Essential Businesses",
+                              "share_firms_service" = "Share Firms Service Sector",
+                              "share_women" = "Share Women", 
+                              "social_services" = "Social Services",
+                              "sports" = "Sports", 
+                              "tax_fin_admin" = "Financial Administration"))
+
+Figure_B6
+```
+```{r}
+ggsave(plot = Figure_B6, "Data_2020/Figures/Figure_B6.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
-#### Mapping MAE
+### In Appendix - Mapping MAE
 
 ```{r}
 esp_can <- esp_get_country() 
@@ -1002,26 +1011,23 @@ munic <-
 df_mae_map <- munic |> 
   left_join(df_mae, by = "INE")  
 
-ggplot(esp_can) +
+Figure_B5 <- ggplot(esp_can) +
   geom_sf() +
   geom_sf(data = can_prov) +
   geom_sf(data = can_box) + 
   geom_sf(data = df_mae_map, aes(fill = mae_rf), color = "black", size = .5)+
-  scale_fill_viridis_c(na.value = NA) +
-  theme_minimal()
-```
+  scale_fill_gradient(na.value = "grey", high ="#FF0000",low = "steelblue",name = "Absolute\nError")+
+  theme_void()
 
-No spatial relationship
+Figure_B5
+```
 
 ```{r}
-df_mae |> 
-  ggplot()+
-  geom_point(aes(x = area_sqkm, y = mae_rf)) +
-  theme_minimal()+
-    coord_cartesian(xlim = c(0, 300), ylim = c(0, 0.18))
+ggsave(plot = Figure_B5, "Data_2020/Figures/Figure_B5.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
-### Linear regression
+
+### Not included - Linear regression
 
 ```{r}
 df_mae_lm <-
@@ -1034,7 +1040,7 @@ summary(model)
 ```
 ### Absoulte error by Regions (Province and Autonomous Community)
 
-#### Province
+#### In Text - Province
 
 ```{r}
 CPRO_mae <- df_mae |> 
@@ -1053,8 +1059,10 @@ Figure_7 <-
 Figure_7
 ```
 ```{r}
-ggsave("Data_2020/Figures/Figure_7.png", bg = "white", width = 10, height = 7, dpi = 300)
+ggsave(plot = Figure_7,"Data_2020/Figures/Figure_7.png", bg = "white", width = 10, height = 7, dpi = 300)
 ```
+
+Not included
 
 Mean Absolute Error by Province
 
@@ -1078,7 +1086,7 @@ ggplot(esp_can) +
   theme_minimal()
 ```
 
-#### Autnomous communities
+#### Not Included - Autnomous communities
 
 ```{r}
 CCAA_mae <- df_mae |> 
@@ -1114,20 +1122,48 @@ ggplot(esp_can) +
   theme_minimal()
 ```
 
-### USE Patchwork Scatter plots
+### In Appendix - Scatter plots
 ```{r}
-ggplot(df_mae) +
-    geom_point(aes(x = pop_density, y = mae_rf)) +
+pb1 <- 
+  ggplot(df_mae) +
+    geom_point(aes(x = pop_total, y = mae_rf)) +
     theme_minimal() +
-    coord_cartesian(xlim = c(0, 300), ylim = c(0, 0.18))
+    coord_cartesian(xlim = c(100, 2000), ylim = c(0, 0.18)) +
+  labs(x = "Total Population",
+       y = "Absolute Error")
+
 ```
 
 ```{r}
-ggplot(df_mae) +
+pb2 <- 
+  ggplot(df_mae) +
+    geom_point(aes(x = pop_density, y = mae_rf)) +
+    theme_minimal() +
+    coord_cartesian(xlim = c(0, 60), ylim = c(0, 0.18))+
+  labs(x = "Population Density",
+       y = "Absolute Error")
+```
+
+```{r}
+pb3 <- 
+  ggplot(df_mae) +
     geom_point(aes(x = area_sqkm, y = mae_rf)) +
     theme_minimal() +
-    coord_cartesian(xlim = c(0, 60), ylim = c(0, 0.18))
+    coord_cartesian(xlim = c(0, 300), ylim = c(0, 0.18))+
+  labs(x = "Area in sqkm",
+       y = "Absolute Error")
 ```
+
+```{r}
+Figure_B7 <- wrap_plots(pb1, pb2, pb3, ncol = 1)
+
+Figure_B7
+```
+
+```{r}
+ggsave(plot = Figure_B7, "Data_2020/Figures/Figure_B7.png", dpi = 300, bg = "white", height = 12, width = 10)
+```
+
 
 ## Building the Model
 
@@ -1241,53 +1277,6 @@ non_zero_vars <- non_zero_vars[-1]
 non_zero_vars
 ```
 
-#### Data chosen
-[1] "CPRO5"                             "CPRO6"                             "CPRO9"                             "CPRO10"                           
- [5] "CPRO11"                            "CPRO12"                            "CPRO13"                            "CPRO14"                           
- [9] "CPRO15"                            "CPRO16"                            "CPRO18"                            "CPRO19"                           
-[13] "CPRO21"                            "CPRO22"                            "CPRO23"                            "CPRO24"                           
-[17] "CPRO29"                            "CPRO31"                            "CPRO33"                            "CPRO34"                           
-[21] "CPRO35"                            "CPRO37"                            "CPRO38"                            "CPRO39"                           
-[25] "CPRO40"                            "CPRO41"                            "CPRO42"                            "CPRO43"                           
-[29] "CPRO45"                            "CPRO47"                            "CPRO48"                            "social_services"                  
-[33] "tax_fin_admin"                     "health"                            "employment_promotion"              "pensions"                         
-[37] "share_ue_industry"                 "pop_share_foreigners"              "share_contracts_agri"              "share_contracts_con"              
-[41] "share_ccaa_general_services"       "pop_density_low1"                  "area_sqkm_low1"                    "pop_total_x_gov_bodies"           
-[45] "pop_total_x_trans_public_agencies" "pop_total_x_pop_share_foreigners"  "pop_total_x_share_ccaa_economic"   "CPRO_log"                         
-[49] "environment_log"                   "social_services_log"               "public_debt_log"                   "gov_bodies_log"                   
-[53] "pub_transportation_log"            "ue_pct_2020_log"                   "share_ue_construction_log"         "share_ue_industry_log"            
-[57] "share_ue_agriculture_log"          "share_ue_wo_job_log"               "pop_share_wk_age_log"              "pop_share_youth_log"              
-[61] "share_firms_service_log"           "share_contracts_con_log"           "urban_prop_tax_log"                "revenue_tax_share_log"            
-[65] "revenue_other_share_log"           "share_ccaa_economic_log"           "pop_density_log"                   "per_capita_contracts_log"         
-[69] "general_services_2"                "health_2"                          "infrastructure_2"                  "rural_prop_tax_2"                 
-[73] "share_ccaa_general_services_2"     "per_capita_contracts_2"            "general_services_3"                "housing_urban_plan_3"             
-[77] "area_sqkm_3"                       "share_ue_industry_3"               "pop_share_foreigners_3"            "pop_share_youth_3"                
-[81] "share_firms_service_3"             "share_contracts_serv_3"            "revenue_grants_share_3"            "share_ccaa_security_3"            
-[85] "share_ccaa_social_protection_3"   
-
-II
-
-[1] "CPRO03"                        "CPRO04"                        "CPRO05"                        "CPRO06"                        "CPRO09"                       
- [6] "CPRO10"                        "CPRO11"                        "CPRO12"                        "CPRO13"                        "CPRO14"                       
-[11] "CPRO16"                        "CPRO18"                        "CPRO19"                        "CPRO20"                        "CPRO21"                       
-[16] "CPRO22"                        "CPRO23"                        "CPRO24"                        "CPRO26"                        "CPRO28"                       
-[21] "CPRO29"                        "CPRO31"                        "CPRO33"                        "CPRO34"                        "CPRO35"                       
-[26] "CPRO37"                        "CPRO38"                        "CPRO39"                        "CPRO40"                        "CPRO41"                       
-[31] "CPRO42"                        "CPRO43"                        "CPRO45"                        "CPRO46"                        "CPRO47"                       
-[36] "CPRO48"                        "CPRO50"                        "social_services"               "tax_fin_admin"                 "health"                       
-[41] "employment_promotion"          "pensions"                      "share_ue_industry"             "pop_share_foreigners"          "share_contracts_agri"         
-[46] "share_contracts_con"           "urban_prop_tax"                "share_ccaa_general_services"   "pop_density_low1"              "area_sqkm_low1"               
-[51] "environment_log"               "social_services_log"           "tax_fin_admin_log"             "public_debt_log"               "gov_bodies_log"               
-[56] "business_turism_sme_log"       "pub_transportation_log"        "ue_pct_2020_log"               "share_ue_construction_log"     "share_ue_industry_log"        
-[61] "share_ue_agriculture_log"      "share_ue_wo_job_log"           "pop_share_wk_age_log"          "pop_share_youth_log"           "share_firms_service_log"      
-[66] "share_contracts_con_log"       "revenue_other_share_log"       "share_ccaa_economic_log"       "pop_density_log"               "per_capita_contracts_log"     
-[71] "general_services_2"            "environment_2"                 "health_2"                      "infrastructure_2"              "rural_prop_tax_2"             
-[76] "share_ccaa_general_services_2" "per_capita_contracts_2"        "general_services_3"            "housing_urban_plan_3"          "area_sqkm_3"                  
-[81] "share_ue_industry_3"           "pop_share_youth_3"             "share_firms_service_3"         "share_contracts_serv_3"        "rural_prop_tax_3"             
-[86] "revenue_grants_share_3"        "share_ccaa_security_3
-
-
-
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "CPRO")&!startsWith(non_zero_vars, "greater")&!endsWith(non_zero_vars, "low1")]
 
@@ -1299,7 +1288,7 @@ df_ml_final <-
 Keeping greater_20k beause of previous insights about 
 
 
-#### Training and testing
+### Data splitting - Training and testing
 
 ```{r}
 set.seed(123)  
@@ -1310,28 +1299,6 @@ training.samples <-
 train.data  <- df_ml_final[training.samples, ]
 test.data <- df_ml_final[-training.samples, ] 
 ```
-
-Checking distributions
-
-```{r}
-train.data |> 
-  ggplot()+
-  geom_histogram(aes(dea_robust), stat = "bin", bins = 160) +
-  theme_minimal() +
-  labs(title = "Distribution of DEA Efficiency Score",
-       y = "Count")
-```
-
-```{r}
-test.data |> 
-  ggplot()+
-  geom_histogram(aes(dea_robust), stat = "bin", bins = 160) +
-  theme_minimal() +
-  labs(title = "Distribution of DEA Efficiency Score",
-       y = "Count")
-```
-
-
 
 ### Training Random Forest
 
@@ -1455,7 +1422,7 @@ performance_metrics_cat
 model_performance <- cbind(data.frame(model_performance, performance_metrics_cat))
 ```
 
-### Model selection
+### In Text - Model selection
 
 ```{r}
 model_performance
@@ -1506,6 +1473,8 @@ predictions = predictions %>% mutate(out=factor(if_else(real<lwr | real>upr,1,0)
 mean(predictions$out==1)
 ```
 
+#### In Text - Prediction Interval
+
 ```{r}
 Figure_8 <- 
   ggplot(predictions, aes(x=fit, y=real))+
@@ -1528,10 +1497,10 @@ Figure_8
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_8.png", bg = "white", dpi = 300, width = 10, height = 7)
+ggsave(plot = Figure_8,"Data_2020/Figures/Figure_8.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
-
+#### In Appendix - Names of Over and underachievers
 
 Putting information on how municipalities fared into one data frame
 ```{r}
@@ -1542,47 +1511,14 @@ predictions_subset <- predictions[c("out", "o_u_achiever")]
 df_achievement <- cbind(df_achievement_subset, predictions_subset)
 
 unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "overachiever"])
+```
 
+
+```{r}
 unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "underachiever"])
 ```
-# DELETE
-```{r}
-variables_to_plot <- c("general_services", "employment_promotion", "community_wellbeing", "environment", "social_services")
 
-# Create boxplots
-for (variable in variables_to_plot) {
-  p <- ggplot(df_achievement, aes_string(x = "o_u_achiever", y = variable)) +
-    geom_boxplot() +
-    labs(title = paste("Boxplot of", variable, "by Achiever Category"),
-         x = "Achiever Category",
-         y = variable) +
-    theme_minimal()
-  
-  print(p)
-}
-```
-Contextualize (MAE in the beginning)
-```{r}
-df_achievement |> 
-  group_by(CPRO, o_u_achiever) %>%
-  summarise(count = n()) %>%
-  mutate(share = count / sum(count) * 100) %>%
-  ungroup() |> 
-  complete(CPRO, o_u_achiever, fill = list(count = 0, share = 0)) |> 
-  arrange(o_u_achiever, share) |> 
-  filter(o_u_achiever != "as predicted") |> 
-  ggplot(aes(x = CPRO, y = share, fill = o_u_achiever)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.8)+ 
-  labs(x = "Province Code",
-       y = "Share (%)",
-       fill = "o_u_achiever") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
-```
-# DELETE
-
-
-### Variable importance
+### In Text - Variable importance
 
 Creating my own plot for consistency
 
@@ -1645,12 +1581,12 @@ Figure_9
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_9.png", bg = "white", width = 10, height = 7, dpi = 300)
+ggsave(plot = Figure_9,"Data_2020/Figures/Figure_9.png", bg = "white", width = 10, height = 7, dpi = 300)
 ```
 
 ### PDP
 
-####Policy
+#### In Text Policy-related Plots
 
 ```{r}
 # employment promotion
@@ -1712,27 +1648,35 @@ p4 <-
 ```
 
 ```{r}
-Figure_9 <- p1 + p2 + p3 + p4
+Figure_10 <- p1 + p2 + p3 + p4
 
-Figure_9
+Figure_10
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_9.png", width = 10, height = 7, dpi = 300, bg = "white")
+ggsave(plot = Figure_10, "Data_2020/Figures/Figure_10.png", width = 10, height = 7, dpi = 300, bg = "white")
 ```
 
-ADD to Appendix
-
-General Services and Pop Total
+#### In Appendix - General Services and Pop Total
 
 ```{r}
-ggplot(df_mae) +
+Figure_B8 <- 
+  ggplot(df_mae) +
     geom_point(aes(x = general_services, y = pop_total)) +
-    theme_minimal() +
-    coord_cartesian( ylim = c(0, 50000))
+  labs(x = "Budget Share General Services", 
+       y = "Total Population") +
+  theme_minimal() +
+  coord_cartesian( ylim = c(0, 50000)) +
+  scale_x_continuous(breaks = seq(0, 100, by = 10), minor_breaks = NULL, labels = scales::label_percent(scale = 1))
+
+Figure_B8
+```
+```{r}
+ggsave(plot = Figure_B8, "Data_2020/Figures/Figure_B8.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
-#### Structural
+
+#### In Text - Structural-related predictors
 
 ```{r}
 # employment promotion
@@ -1794,19 +1738,19 @@ p8 <-
 ```
 
 ```{r}
-Figure_10 <- p5 + p6 + p7 + p8
+Figure_11 <- p5 + p6 + p7 + p8
 
-Figure_10
+Figure_11
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_10.png", width = 10, height = 7, dpi = 300, bg = "white")
+ggsave(plot = Figure_11,"Data_2020/Figures/Figure_11.png", width = 10, height = 7, dpi = 300, bg = "white")
 ```
 
 
 ### SHAP
 
-#### Importance Bee Plot
+#### Not Included - Importance Bee Plot
 
 ```{r}
 X <- train.data[sample(nrow(train.data), 1000), -which(names(train.data) == "dea_robust")]
@@ -1818,7 +1762,7 @@ sv_importance(sv, kind = "bee", max_display = Inf) +
   theme_minimal()
 ```
 
-#### Dependence Plot - Structural Features
+#### In Text - Dependence Plot - Structural Features
 
 ```{r}
 SHAP_structural <- c("pop_share_foreigners", "ue_pct_2020_log", "pop_density_log")
@@ -1868,35 +1812,35 @@ p11 <-
   plots_structural[[3]]
 
 
-Figure_11 <- wrap_plots(p9, p10, p11, ncol = 1)
+Figure_12 <- wrap_plots(p9, p10, p11, ncol = 1)
 
-Figure_11
+Figure_12
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_11.png", width = 10, height = 12, dpi = 300, bg = "white")
+ggsave(plot = Figure_12,"Data_2020/Figures/Figure_12.png", width = 10, height = 12, dpi = 300, bg = "white")
 ```
 
-#### Dependence plots - Provinces
+#### In Text - Dependence plots - Provinces
 
 ```{r}
 SHAP_region <- "CPRO"
-Figure_12 <- 
+Figure_13 <- 
   sv_dependence(sv, v = SHAP_region) +
   theme_minimal()+
   guides(colour = guide_colourbar(direction = "horizontal", title.position = "top")) +
   labs(color = "Share of Youth (log)",
        x = "Province Codes")
 
-Figure_12
+Figure_13
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_12.png", dpi = 300, width = 12, height = 7, bg = "white")
+ggsave(plot = Figure_13,"Data_2020/Figures/Figure_13.png", dpi = 300, width = 12, height = 7, bg = "white")
 ```
 
 
-#### Dependence Plots - Policy Features
+#### In Text - Dependence Plots - Policy Features
 
 ```{r}
 SHAP_policy <- c("employment_promotion", "environment_log","social_services","general_services_2")
@@ -1952,13 +1896,13 @@ p14 <-
 p15 <- 
   plots_policy[[4]] 
 
-Figure_13 <- p12 + p13 + p14 + p15
+Figure_14 <- p12 + p13 + p14 + p15
 
-Figure_13
+Figure_14
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_13.png", width = 14, height = 10, dpi = 300, bg = "white")
+ggsave(plot = Figure_14,"Data_2020/Figures/Figure_14.png", width = 14, height = 10, dpi = 300, bg = "white")
 ```
 
 
@@ -2033,7 +1977,7 @@ Figure_1
 ```
 
 ```{r}
-ggsave("Data_2020/Figures/Figure_1.png", dpi = 300, bg = "white", width = 10, height = 7)
+ggsave(plot = Figure_1,"Data_2020/Figures/Figure_1.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
 ### Visualizing missing municipalities
@@ -2069,7 +2013,9 @@ difference_n_mun <- o |>
   mutate(difference = n.x - n.y,
          proportion = (difference/n.x)*100)
 
-difference_n_mun |> 
+Figure_B1 <- 
+  difference_n_mun |> 
+  filter(!CCAA == "Ceuta" & !CCAA == "Melilla") |> 
   ggplot()+
   geom_col(aes(CCAA, proportion), fill = "steelblue") +
   geom_text(aes(CCAA, proportion, label = paste(round(proportion, 2),"%")),
@@ -2080,6 +2026,12 @@ difference_n_mun |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(y = "Share (%)",
        x = "")
+
+Figure_B1
+```
+
+```{r}
+ggsave(plot = Figure_B1, "Data_2020/Figures/Figure_B1.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
 
