@@ -26,12 +26,11 @@ shp_1 <- st_transform(shp_1, st_crs(shp))
 shp <- rbind(shp, shp_1)
 
 # Variable names
-shp$INE <- str_sub(shp$NATCODE, start = -5)
-shp$prov_code = as.integer(str_sub(shp$INE, -5L, -4L))
-shp$dist_prov_cap = NA
-shp$area_sqkm <- as.numeric(st_area(st_geometry(shp$geometry)))/1000000
+shp$INE <- str_sub(shp$NATCODE, start = -5) # INE code selected
+shp$prov_code = as.integer(str_sub(shp$INE, -5L, -4L)) # Province code
+shp$dist_prov_cap = NA # creating empty variable
+shp$area_sqkm <- as.numeric(st_area(st_geometry(shp$geometry)))/1000000 # calculating area in sqkm
 
-# Project and reproject to UTM
 shp <- st_transform(shp, crs = 32630)
 
 # Loop for each province
@@ -42,8 +41,6 @@ for(p in unique(caps$prov_code)){
   distances <- st_distance(centr, points) / 1000
   shp$dist_prov_cap[shp$prov_code == p] <- distances
 }
-
-
 
 dist_cap = shp %>% select(INE, dist_prov_cap, area_sqkm) %>%
   st_drop_geometry()

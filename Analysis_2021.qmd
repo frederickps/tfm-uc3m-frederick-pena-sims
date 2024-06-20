@@ -13,25 +13,38 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ### Install unusual packages
 
 ```{r}
+
+```
+
+### Library
+
+Automatic
+
+```{r}
+check_and_install <- function(package) {
+  if (!requireNamespace(package, quietly = TRUE)) {
+    install.packages(package)
+  }
+  library(package, character.only = TRUE)
+}
+
+packages <- c(
+  "devtools", "tidyverse", "corrplot", "readxl", "rDEA", 
+  "caret", "mice", "xgboost", "mapSpain", "kernelshap", "shapviz", 
+  "pdp", "factoextra", "patchwork", "sf", "scales", "psych", 
+  "officer", "flextable"
+)
+
+sapply(packages, check_and_install)
+```
+
+To install catboost, follow the following step.
+```{r, eval=FALSE}
 install.packages('remotes')
 remotes::install_url('https://github.com/catboost/catboost/releases/download/v1.2.5/catboost-R-windows-x86_64-1.2.5.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
 ```
 
-```{r}
-if (!requireNamespace("catboost", quietly = TRUE)) {
-  install.packages("catboost")
-}
-if (!requireNamespace("caret", quietly = TRUE)) {
-  install.packages("caret")
-}
-if (!requireNamespace("xgboost", quietly = TRUE)) {
-  install.packages("xgboost")
-}
-```
-
-
-### Library
-
+To load packages individually, follow the following step.
 ```{r}
 options(scipen = 999)
 library(catboost)
@@ -408,7 +421,7 @@ df_clus <-
   drop_na()
 ```
 
-#### Not Included - Optimal Cluster estimation
+#### In Appendix - Optimal Cluster estimation
 ```{r}
 fviz_nbclust <- fviz_nbclust(scale(df_clus), kmeans, method = 'silhouette', k.max = 40, nstart = 100)
 
@@ -638,16 +651,8 @@ rf_tune <- train(dea_robust ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(15,16,17,18, 19, 20)),
+                 tuneGrid = data.frame(mtry=c(16)),
                  importance = TRUE)
-
-rf_tune$finalModel$importance
-
-rf_tune$results
-
-varImp(rf_tune)
-
-plot(varImp(rf_tune))
 ```
 
 ##### Results
@@ -723,7 +728,7 @@ rf_tune_log <- train(log(dea_robust) ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 tuneGrid = data.frame(mtry=c(18)),
                  importance = TRUE)
 ```
 
@@ -800,7 +805,7 @@ rf_tune_log10 <- train(log10(dea_robust) ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 tuneGrid = data.frame(mtry=c(18)),
                  importance = TRUE)
 ```
 
@@ -876,7 +881,7 @@ rf_tune_cube <- train((dea_robust)^(1/3) ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 100,
-                 tuneGrid = data.frame(mtry=c(9,12,15,18,21)),
+                 tuneGrid = data.frame(mtry=c(15)),
                  importance = TRUE)
 ```
 
@@ -969,12 +974,13 @@ Figure_B6 <-
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   scale_x_discrete(labels = c("area_sqkm" = "Area in Square KM",
-                              "avg_age" = "Average Age", 
+                              "average_age" = "Average Age", 
                               "business_turism_sme" = "Business, Tourism, and SMEs",
                               "education" = "Education",
                               "gov_bodies" = "Government Bodies",
                               "n_firms" = "Absolute Number of Firms",
                               "other_econ" = "Other Economic Spending",
+                              "party_mun_id" = "Municipality Governing Party Ideology",
                               "pop_density" = "Population Density",
                               "pop_share_youth" = "Share of Youth",
                               "pop_total" = "Total Population",
@@ -1312,7 +1318,7 @@ rf_tune_final <- train(dea_robust ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 1000,
-                 tuneGrid = data.frame(mtry= c(50:56)), # still need to run
+                 tuneGrid = data.frame(mtry= c(53)), # found to be best tune
                  importance = TRUE)
 ```
 
@@ -1349,7 +1355,7 @@ ctrl <- trainControl(method = "cv", number = 5)
 tune_grid <- expand.grid(
   nrounds = c(1500),
   max_depth = c(10),
-  eta = c(0.005, 0.001),
+  eta = c(0.005),
   gamma = c(0.000001),
   colsample_bytree = c(0.8),
   min_child_weight = c(5),
