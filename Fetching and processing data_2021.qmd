@@ -11,6 +11,28 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 ## Library
 
+To verify all the necessary packages are installed, run the following code.
+
+```{r}
+check_and_install <- function(package) {
+  if (!requireNamespace(package, quietly = TRUE)) {
+    install.packages(package)
+  }
+  library(package, character.only = TRUE)
+}
+
+# List of packages to check, install, and load
+packages <- c(
+  "devtools", "odbc", "RODBC", "tidyverse", 
+  "readxl", "DBI", "stringr"
+)
+
+# Check, install, and load each package
+sapply(packages, check_and_install)
+```
+
+To load packages individually, follow the following step.
+
 ```{r setup, include=FALSE}
 options(scipen = 999)
 library(devtools)
