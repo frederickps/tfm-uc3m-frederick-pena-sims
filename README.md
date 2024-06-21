@@ -25,7 +25,7 @@ Go to https://www.ine.es/jaxiT3/Tabla.htm?t=33575&L=0 and download the entire fi
 
 ### 2 Data preprocessing
 
-The file 'tfm_fetching_and_processing.qmd' contains the R-script used to read, transform, and create the ultimate data frame used in the analysis step. Explanations of non-intuitve code and important decisions is provided. This is especially relevant for understanding how the budgetary information was operationalized.
+The file 'tfm_fetching_and_processing.qmd' contains the R-script used to read, transform, and create the ultimate data frame used in the analysis step. Explanations of non-intuitve code and important decisions is provided. This is especially relevant for understanding how the budgetary information was operationalized. Lastly, 'distcap.R' stores the generation of the geographical information used in this work. Out of convenience, the script is sourced in the Quarto file.
 
 
 ### 3 Analysis
