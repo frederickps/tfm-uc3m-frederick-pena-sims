@@ -1,5 +1,6 @@
 ---
 title: "Analysis"
+author: "Frederick Pena Sims"
 format: html
 editor: visual
 ---
@@ -10,15 +11,9 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 ## Analysis
 
-### Install unusual packages
-
-```{r}
-
-```
-
 ### Library
 
-Automatic
+To verify all the necessary packages are installed, run the following code.
 
 ```{r}
 check_and_install <- function(package) {
@@ -38,13 +33,15 @@ packages <- c(
 sapply(packages, check_and_install)
 ```
 
-To install catboost, follow the following step.
+To install the CatBoost library, follow the following step.
+
 ```{r, eval=FALSE}
 install.packages('remotes')
 remotes::install_url('https://github.com/catboost/catboost/releases/download/v1.2.5/catboost-R-windows-x86_64-1.2.5.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
 ```
 
 To load packages individually, follow the following step.
+
 ```{r}
 options(scipen = 999)
 library(catboost)
@@ -69,20 +66,20 @@ library(officer)
 library(flextable)
 ```
 
-### Load data (if needed)
+### Load data
+
+If needed, load the data into the environment. The repository contains the correct file already.
 
 ```{r}
 df_final <- read.csv("Data_2020/TFM_data_2024-06-12.csv", colClasses = c(INE = "character", greater_20k = "factor", CODAUTO = "character")) |> 
   select(-X)
 ```
 
-Variable Returns to Scale (RTS = "Variable"): This assumption allows for flexibility in the relationship between inputs and outputs. It recognizes that the impact of municipal spending on reducing unemployment may vary across municipalities due to factors such as local economic conditions, labor market dynamics, and policy effectiveness.
-
 ## DEA
 
-### Isotonocity 
+### Isotonocity
 
-The isotonicity property needs to be considered for each input-output pair individually. For Output 1, the data should not violate the isotonicity assumption. For Output 2, since the correlation is slightly negative but close to zero, the impact might be negligible, and the DEA model can still be constructed and interpreted meaningfully.
+To run a DEA, the isotonicity property needs to be considered for each input-output pair individually. For Output 1, the data should not violate the isotonicity assumption. For Output 2, since the correlation is slightly negative but close to zero, the impact might be negligible, and the DEA model can still be constructed and interpreted meaningfully.
 
 ```{r}
 df_iso <- 
@@ -96,9 +93,9 @@ corrplot(corr_iso)
 
 ### Efficiency score estimation
 
-Braking off into separate data sets and standardizing as is good practice
+Following the documentation of the `rDEA` package, variables are stored in separate objects and subsequently standardized.
 
-Difference between two years negated so negative values (reducing unemployment) are observed as better by DEA while greater differences are made negative. Constant added to not infringe on non-negative output.
+The difference between 2021 and 2020 is inversed so negative values (reducing unemployment) are observed as better by DEA while greater differences are made negative. This is done, as the DEA interprets larger values as better. A constant is added to not infringe the non-negative constraint.
 
 ```{r}
 X <- df_final[c("per_capita_MUN")]
@@ -123,9 +120,12 @@ Z <- Z |>  mutate(across(everything(), mean_normalize))
 Y <- Y |> mutate(across(everything(), mean_normalize))
 ```
 
-#### Validating inverse assumption
+#### Validation DEA
+
+To validate the assumption that the inverted variable on the difference in unemployment between two years is picked up correctly by the DEA, a naive DEA containing only input and output variables is conducted.
 
 ```{r}
+set.seed(3643)
 dea_naive <-
   dea(XREF = X, YREF = Y, X = X, Y = Y, W =NULL, RTS ="variable", model = "output")
 
@@ -134,7 +134,6 @@ df_dea_naive <-
   mutate(dea_naive = dea_naive$thetaOpt)
 ```
 
-
 ```{r}
 df_dea_naive |> 
   arrange(desc(dea_naive)) |> 
@@ -142,9 +141,11 @@ df_dea_naive |>
   head()
 ```
 
+The result shows that the most efficient municipalities all coincide in having substantial unemployment rate reductions along with high median income values per consumption unit, while showing minimal expenditure.
+
 #### Environmental DEA estimation
 
-Introducing data frames into Simar and Wilson (2007) model.
+Now, environmental data is introduced to estimate efficiency scores using the Simar and Wilson (2007) model.
 
 ```{r}
 dea_robust <- 
@@ -152,7 +153,7 @@ dea_robust <-
                 L1=10, L2=100, alpha=0.05)
 ```
 
-Calculating the relative efficiency score, as efficiency scores are only provided in absolute terms.
+Since efficiency scores are only provided in absolute terms, relative efficiency scores are calculated manually.
 
 ```{r}
 sorted_scores <- sort(dea_robust$delta_hat_hat, decreasing = TRUE)
@@ -168,11 +169,9 @@ df_dea <-
 
 ### Efficiency score
 
-#### In Appendix - Distribution
+#### Distribution
 
-Included in Appendix of final paper 
-
-Distribution of DEA Efficiency Score
+A simple distribution of the subsequent target variable (efficiency score) is calculated.
 
 ```{r}
 mean_val <- mean(df_dea$dea_robust)
@@ -197,14 +196,14 @@ Figure_B2 <-
 
 Figure_B2
 ```
+
 ```{r}
 ggsave(plot = Figure_B2, "Data_2020/Figures/Figure_B2.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
-
 #### Most and least efficient municipalities
 
-Finding most efficient municipalities
+To get an ideo of how the efficiency score relates to the input and output variables, the five most efficienct and least efficient municipalities are shown.
 
 ```{r}
 df_dea |> 
@@ -213,8 +212,6 @@ df_dea |>
   head()
 ```
 
-Least efficient
-
 ```{r}
 df_dea |> 
   arrange(desc(dea_robust)) |> 
@@ -222,23 +219,23 @@ df_dea |>
   tail()
 ```
 
-
-#### Environmental variables
-
-robust coefficients in the truncated regression of reciprocal of DEA score on environmental variables (after the second loop).
-
-```{r}
-dea_robust$beta_hat_hat
-```
 #### Mean efficiency score
 
 ```{r}
 mean(df_dea$dea_robust)
 ```
 
-0.7701055
+#### Environmental variables
 
-#### t-test between city sizes
+The DEA algorithm also provides information on the coefficients of the truncated regression of reciprocal of DEA score on environmental variables (after the second loop).
+
+```{r}
+dea_robust$beta_hat_hat
+```
+
+#### t-test between municipality sizes
+
+T-tests are conducted to understand if efficiency scores of larger municipalities are structurally different from efficacy values in smaller municipalities.
 
 ```{r}
 greater_20k <- df_dea[df_dea$greater_20k == 1, "dea_robust"]
@@ -249,8 +246,6 @@ t_test_result <- t.test(greater_20k, smaller_20k)
 t_test_result
 ```
 
-Smaller municipalities are more efficient, statistically significant.
-
 ```{r}
 greater_100k <- df_dea[df_dea$pop_total > 100000, "dea_robust"]
 smaller_100k <- df_dea[df_dea$pop_total <= 100000, "dea_robust"]
@@ -260,9 +255,9 @@ t_test_result <- t.test(greater_100k, smaller_100k)
 t_test_result
 ```
 
-A bit more pronounced if threshold difference between large and small municipality is greater.
+#### Mapping the Efficiency score
 
-#### In Text - Map
+Using the MapSpain package, the efficiency score can be mapped very easily.
 
 ```{r}
 esp_can <- esp_get_country() 
@@ -277,6 +272,10 @@ munic <-
 df_dea_map <- munic |> 
   left_join(df_dea, by = "INE")  
 
+avion_data <- df_dea_map |> 
+  filter(name == "Avión")
+avion_coords <- st_coordinates(avion_data)
+
 
 Figure_2 <- 
   ggplot(esp_can) +
@@ -284,6 +283,11 @@ Figure_2 <-
   geom_sf(data = can_prov) +
   geom_sf(data = can_box) + 
   geom_sf(data = df_dea_map, aes(fill = dea_robust), color = "black", size = .5)+
+  geom_text(data = avion_data, aes(x = avion_coords[1, 1], y = avion_coords[1, 2], label = "Avión"), 
+            nudge_x = -1.2, nudge_y = -1.2, size = 3, color = "black") +
+  geom_segment(data = avion_data, aes(x = avion_coords[1, 1], y = avion_coords[1, 2], 
+                                 xend = avion_coords[1, 1] - 1.2, yend = avion_coords[1, 2] - 1.2), 
+               size = 0.5, color = "black") + 
   scale_fill_gradient(na.value = "grey", low ="#FF0000",high = "#FFFFFF",name = "Efficiency\nScore") +
   theme_void()
 
@@ -294,12 +298,9 @@ Figure_2
 ggsave(plot = Figure_2,"Data_2020/Figures/Figure_2.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
-
-Seems to follow the notion that more money does not necessarily produce more efficent labour market outcomes (but often adverse relationship)
-
-North more inefficient than South
-
 ### PCA
+
+In order to select only valid variables for PCA, a separate data frame is constructed and the PCA subsequently conducted.
 
 ```{r}
 df_pca <-
@@ -312,7 +313,9 @@ set.seed(53456)
 pca <- prcomp(df_pca, scale. = T)
 ```
 
-#### In Appendix - PC variance
+#### PC variance - In Appendix
+
+A screeplot is created and minimally altered.
 
 ```{r}
 screeplot <- fviz_screeplot(pca, addlabels = TRUE)
@@ -327,9 +330,16 @@ Figure_B3
 ```{r}
 ggsave(plot = Figure_B3, "Data_2020/Figures/Figure_B3.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
- 
 
-Filtering less strong rotation values to get better overview
+#### PC1
+
+Efficiency score does not contribute significantly to this Principal Component.
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 1)
+```
+
+Less pronounced rotation values are filtered out for better legibility.
 
 ```{r}
 # Create a data frame with PCA rotation values
@@ -342,11 +352,17 @@ data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 1]
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-#### In Text - PC 2
 
-Filtering less strong rotation values to get better overview
+#### PC2 - in text
 
-Barplot of PCA (Second Prinicipal Component)
+Efficiency score contributes significantly to second PC.
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 2)
+```
+
+Again, less pronounced rotation values are filtered out for better legibility.
+
 ```{r}
 Figure_3 <- 
   data.frame(variable = rownames(pca$rotation), rotation_value = pca$rotation[, 2]) |>
@@ -384,34 +400,14 @@ Figure_3 <-
 
 Figure_3
 ```
+
 ```{r}
 ggsave(plot = Figure_3,"Data_2020/Figures/Figure_3.png", bg ="white", width = 10, height = 7)
 ```
 
-
-
-REST NOT INCLUDED
-
-```{r}
-data.frame(z1=pca$x[,1],z2=pca$x[,2]) %>% 
-  ggplot(aes(z1,z2)) + geom_point(size=0) +
-  labs(title="First two principal components (scores)", x="PC1", y="PC2") + #guides(color=guide_legend(title="HDI"))+
-  theme_bw() +theme(legend.position="bottom")
-```
-
-```{r}
-fviz_contrib(pca, choice = "var", axes = 1)
-```
-
-DEA does not contribute as much.
-
-```{r}
-fviz_contrib(pca, choice = "var", axes = 2)
-```
-
-DEA contributes the second most to component number two
-
 ### Clustering
+
+As for PCA, a data frame for clustering is created.
 
 ```{r}
 df_clus <-
@@ -421,7 +417,10 @@ df_clus <-
   drop_na()
 ```
 
-#### In Appendix - Optimal Cluster estimation
+#### Optimal Cluster estimation - In Appendix
+
+Using the silhouette method, the optimal number of clusters is estimated.
+
 ```{r}
 fviz_nbclust <- fviz_nbclust(scale(df_clus), kmeans, method = 'silhouette', k.max = 40, nstart = 100)
 
@@ -435,13 +434,13 @@ Figure_B4
 ggsave(plot = Figure_B4, "Data_2020/Figures/Figure_B4.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
-
 ```{r}
 cluster <- kmeans(df_clus, centers = 2, nstart = 100)
 ```
 
+#### Centers - in Text
 
-#### In Text - Centers
+To visualize clusters, centers are taken from cluster object and passed into a `ggplot` object.
 
 ```{r}
 # Assuming 'cluster' is your k-means result
@@ -471,7 +470,7 @@ custom_labels <- c(
 Figure_4 <- 
   centers |> 
   select(general_services, pub_safety_mobility, social_services, infrastructure, employment_promotion, dist_prov_cap, ue_pct_2020, pop_share_retirees, share_contracts_serv, revenue_tax_share, pop_density, dea_robust, cluster, pop_share_foreigners, share_essential_employment, share_firms_service, housing_urban_plan) |>
-  pivot_longer(-cluster, names_to = "variable", values_to = "value") |>
+  pivot_longer(-cluster, names_to = "variable", values_to = "value") |> # values stored in wide format - transformed into long format for ggplot
   ggplot(aes(x = variable, y = value, fill = cluster)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   facet_wrap(~ variable, scales = "free", labeller = labeller(variable = custom_labels)) +
@@ -488,14 +487,9 @@ Figure_4
 ggsave(plot = Figure_4,"Data_2020/Figures/Figure_4.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
+### Correlation - in Text
 
-### In Text -Correlation
-
-Spearman because most of the data is not normally distributed and relationships are not linear
-
-Filtered 
-
-Correlation with DEA efficiency score
+Spearman correlations with the efficiency score are estimated and passed into a `ggplot` object.
 
 ```{r}
 df_corr <-
@@ -553,17 +547,14 @@ Figure_5 <-
 
 Figure_5
 ```
+
 ```{r}
 ggsave(plot = Figure_5,"Data_2020/Figures/Figure_5.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
 ## Data imputation
 
-Deleting unnsecessary variables
-
-All variables without additional meaning and variables used in estimating efficiency score+
-
-No revenue data - resembles spending data
+Using random forest, missing values are imputed. First all variables not used further are deleted.
 
 ```{r}
 df_model <- 
@@ -580,15 +571,18 @@ df_model_imp <- complete(imp, action=m)
 
 ## Target variable evaluation
 
+To start, off, the target variable is predicted using a simple random forest model, with different alterations of the target variable.
+
+Every model is constructed the same, reducing features with a LASSO and training the model on a split data set, testing its performance on a test data set. All models have optimized m-try values, producing the best performing models while limiting computational time.
+
 ```{r}
 df_model_robust <- df_model_imp |> 
   select(-c(INE, NOMBRE, CCAA, CPRO)) 
 ```
 
-## Modelling - Target normal - Random forest
+## Modelling - Target normal
 
 ### Lasso regression
-
 ```{r}
 # Define the control parameters for LASSO regression
 ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
@@ -601,10 +595,13 @@ lasso_model <- train(dea_robust ~ .,
                      trControl = ctrl,
                      tuneGrid = expand.grid(alpha = 1, lambda = seq(0.001, 1, length = 100)))
 
+#extracts coefficients
 lasso_coef <- coef(lasso_model$finalModel, s = lasso_model$finalModel$lambdaOpt)
 
+# extracts names of variables with coefficients not zero
 non_zero_vars <- rownames(lasso_coef)[lasso_coef[,1]!=0]
 
+# deleting the first name (constant)
 non_zero_vars <- non_zero_vars[-1] 
 
 non_zero_vars
@@ -641,6 +638,7 @@ train.data_pre_no$NOMBRE <- NULL
 ```
 
 #### Training RF
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
 
@@ -664,7 +662,8 @@ test_results <- data.frame(dea_robust = test.data_pre_no$dea_robust)
 test_results$rf <- predict(rf_tune, test.data_pre_no)
 postResample(pred = test_results$rf,  obs = test_results$dea_robust)
 ```
-## Modelling - Target log - Random forest
+
+## Modelling - Target log 
 
 ### Lasso regression
 
@@ -688,7 +687,7 @@ non_zero_vars <- non_zero_vars[-1]
 
 non_zero_vars
 ```
-  
+
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
 
@@ -718,6 +717,7 @@ train.data_pre_log$NOMBRE <- NULL
 ```
 
 #### Training RF
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
 
@@ -741,7 +741,8 @@ test_results$rf_log <- exp(test_results$rf_log)
 rf_log <- postResample(pred = test_results$rf_log,  obs = test_results$dea_robust)
 ```
 
-## Modelling - Target log10 - Random forest
+## Modelling - Target log10
+
 ### Lasso regression
 
 ```{r}
@@ -764,7 +765,6 @@ non_zero_vars <- non_zero_vars[-1]
 
 non_zero_vars
 ```
-
 
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
@@ -795,6 +795,7 @@ train.data_pre_log10$NOMBRE <- NULL
 ```
 
 #### Training RF
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
 
@@ -818,7 +819,7 @@ test_results$rf_log10 <- 10^(test_results$rf_log10)
 rf_log10 <- postResample(pred = test_results$rf_log10,  obs = test_results$dea_robust)
 ```
 
-## Target cube root - Random forest
+## Modelling - Target cubed
 
 ### Lasso regression
 
@@ -842,7 +843,7 @@ non_zero_vars <- non_zero_vars[-1]
 
 non_zero_vars
 ```
- 
+
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "party")&!startsWith(non_zero_vars, "greater")]
 
@@ -871,6 +872,7 @@ train.data_pre_cub$NOMBRE <- NULL
 ```
 
 #### Training RF
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
 
@@ -886,6 +888,7 @@ rf_tune_cube <- train((dea_robust)^(1/3) ~.,
 ```
 
 ##### Results
+
 ```{r}
 # cube
 test_results$rf_cube <- predict(rf_tune_cube, test.data_pre_cub)
@@ -893,8 +896,9 @@ test_results$rf_cube <- (test_results$rf_cube)^3
 rf_cube <- postResample(pred = test_results$rf_cube,  obs = test_results$dea_robust)
 ```
 
-#### In Text - Compare Results
+### Modelling - Compare Results - in Text
 
+Results are subsequently stored in one common data frame for a better overview.
 ```{r}
 cube_df <- as.data.frame(t(rf_cube))
 log_df <- as.data.frame(t(rf_log))
@@ -911,8 +915,9 @@ rf_metrics_table <- rbind(normal_df, log_df,  log10_df, cube_df)
 rf_metrics_table
 ```
 
+## MAE Source 
 
-## MAE Investigation
+This chapter aims to find the sources of the Mean Absolute Error. To do that, absolute errors from the test set are joined with the original data-frame after adding the target variable.
 
 ```{r}
 # normal
@@ -928,7 +933,9 @@ df_mae <-
   drop_na()
 ```
 
-### In Text - Efficiency and Absolute Error
+### Efficiency and Absolute Error - In Text
+
+First, a simple scatter plot provides an idea of how well extreme efficiency scores are predicted.
 
 ```{r}
 Figure_6 <- 
@@ -945,8 +952,9 @@ Figure_6
 ggsave(plot = Figure_6,"Data_2020/Figures/Figure_6.png", bg = "white", width = 10, height = 7, dpi = 300)
 ```
 
+### Correlation Analysis - In Appendix
 
-### In Appendix - Correlation Analysis
+As before, a simple Spearman correlation matrix is passed into a `ggplot` object. This time the target variable is the absolute error of a given observation.
 
 ```{r}
 df_corr_mae <-
@@ -998,11 +1006,14 @@ Figure_B6 <-
 
 Figure_B6
 ```
+
 ```{r}
 ggsave(plot = Figure_B6, "Data_2020/Figures/Figure_B6.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
-### In Appendix - Mapping MAE
+### Mapping MAE - in Appendix 
+
+As the efficiency score before, the absolute error for municipalities in the test data is mapped.
 
 ```{r}
 esp_can <- esp_get_country() 
@@ -1032,8 +1043,9 @@ Figure_B5
 ggsave(plot = Figure_B5, "Data_2020/Figures/Figure_B5.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
+### Linear regression - Not included
 
-### Not included - Linear regression
+A simple linear regression including all variables was run to find patterns. One distinct pattern was the effect of the information on provinces.
 
 ```{r}
 df_mae_lm <-
@@ -1044,9 +1056,12 @@ model <- lm(mae_rf ~ ., data = df_mae_lm)
 # Print summary of the model
 summary(model)
 ```
-### Absoulte error by Regions (Province and Autonomous Community)
+
+### Absoulte error by Province
 
 #### In Text - Province
+
+As such, the average absolute error by province is calculated, with apparent variations across provinces.
 
 ```{r}
 CPRO_mae <- df_mae |> 
@@ -1064,15 +1079,12 @@ Figure_7 <-
 
 Figure_7
 ```
+
 ```{r}
 ggsave(plot = Figure_7,"Data_2020/Figures/Figure_7.png", bg = "white", width = 10, height = 7, dpi = 300)
 ```
 
-Not included
-
-Mean Absolute Error by Province
-
-Map
+A different but less striking visualization is its mapping.
 
 ```{r}
 esp_can <- esp_get_country() 
@@ -1092,43 +1104,10 @@ ggplot(esp_can) +
   theme_minimal()
 ```
 
-#### Not Included - Autnomous communities
-
-```{r}
-CCAA_mae <- df_mae |> 
-  group_by(CCAA, CODAUTO) |> 
-  summarise(mae_rf = mean(mae_rf, na.rm = TRUE))
-
-# Create the graph
-ggplot(CCAA_mae, aes(x = CCAA, y = mae_rf)) +
-  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
-  labs(title = "Mean Absolute Error by CCAA",
-       x = "Autonomous Community",
-       y = "Mean Absolute Error") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-Mapping
-```{r}
-esp_can <- esp_get_country() 
-can_prov <- esp_get_can_provinces()
-can_box <- esp_get_can_box() 
-CCAA_sf <- esp_get_ccaa()
-
-df_mae_ccaa <- CCAA_sf |> 
-  left_join(CCAA_mae, by = c("codauto" = "CODAUTO"))  
-
-ggplot(esp_can) +
-  geom_sf() +
-  geom_sf(data = can_prov) +
-  geom_sf(data = can_box) + 
-  geom_sf(data = df_mae_ccaa, aes(fill = mae_rf), color = "black", size = .5)+
-  scale_fill_viridis_c(na.value = NA) +
-  theme_minimal()
-```
-
 ### In Appendix - Scatter plots
+
+Scatter plots for municipality-size related variables with absolute errors were devised. Zooming in on relationships offers better insight and leads to the creation of three binary variables subsequently.
+
 ```{r}
 pb1 <- 
   ggplot(df_mae) +
@@ -1170,12 +1149,11 @@ Figure_B7
 ggsave(plot = Figure_B7, "Data_2020/Figures/Figure_B7.png", dpi = 300, bg = "white", height = 12, width = 10)
 ```
 
-
 ## Building the Model
 
 ### Feature Engineering
 
-Selecting imputed data frame while keeping CCAA and CPRO
+Province information is kept as a factor variable.
 
 ```{r}
 df_ml <- 
@@ -1184,44 +1162,38 @@ df_ml <-
   mutate(CPRO = as.factor(CPRO))
 ```
 
-Adding features
+According to the scatter plots above three binary variables are created using thresholds based on visual cues in said scatter plots.
 
-bivariat:
+`pop_density` --\> threshold: 50
 
-pop_density --\> threshold: 50
+`area_sqkm` --\> threshold: 50
 
-area_sqkm --\> trheshold: 50
+`pop_total` --\> threshold: 500
 
-pop_total --\> threshold: 500
+Since municipality size seemingly plays such an important role, information on population size is interacted with all other numeric columns. Since we may expect population size to be highly correlated with with population density and area in sqkm, we would expect very similar interaction variables if interactions were applied with all three variables adding limited information. This was confirmed as, interacting all population size variables with all other numeric columns was tested but produced slightly worse results. Secondly, all municipality-size related variables are interacted with one another. Lastly, all variables are squared, cubed, and applied a logarithm.
 
-keep CPRO
-
-Interactions:
-
-All of the above with all variables except pca and dea
-
-Function
+To realize the first step, a function is created.
 ```{r}
 generate_interactions <- function(df) {
-  # Extracting numeric columns excluding dea_robust
-  numeric_cols <- df %>%
+  # only numeric columns except dea_robust (efficiency score)
+  numeric_cols <- df |> 
     select(where(is.numeric), -dea_robust)
   
-  # Extracting pop_total column
-  pop_total_col <- numeric_cols %>%
+  # extracting municipality size columns - will be interacted manually
+  mun_size_col <- numeric_cols |> 
     select(pop_total, pop_density, area_sqkm)
   
-  # Other numeric columns excluding pop_total
-  other_numeric_cols <- numeric_cols %>%
+  # all other numeric columns excluding mun_size_col
+  other_numeric_cols <- numeric_cols |> 
     select(-c(pop_total, pop_density, area_sqkm))
   
-  # Generating interactions
+  # in a loop 
   interaction_cols <- list()
   
   for(col_name in names(other_numeric_cols)) {
-    interaction_name <- paste("pop_total", col_name, sep = "_x_")
+    interaction_name <- paste("pop_total", col_name, sep = "_x_") # joint name is created
     interaction_name <- make.names(interaction_name, unique = TRUE)  # Ensure unique column names
-    interaction_cols[[interaction_name]] <- pop_total_col[[1]] * other_numeric_cols[[col_name]]
+    interaction_cols[[interaction_name]] <- mun_size_col[[1]] * other_numeric_cols[[col_name]] # only choosing pop_total
   }
   
   # Combining original and interaction columns
@@ -1231,8 +1203,9 @@ generate_interactions <- function(df) {
 }
 ```
 
+
 ```{r}
-# to apply feature engineering
+# to apply sqauring, cubing, and logarithm
 vars_to_engineer <- 
   df_ml |> 
   select(where(is.numeric)) |> 
@@ -1262,8 +1235,8 @@ df_ml$dea_robust_3 <- NULL
 
 ### Lasso regression
 
+For feature selection, a LASSO model is trained, as previously.
 ```{r}
-# Define the control parameters for LASSO regression
 ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
 
 # Train the LASSO model
@@ -1283,6 +1256,8 @@ non_zero_vars <- non_zero_vars[-1]
 non_zero_vars
 ```
 
+Municipality-size related variables are kept because of importance found in the EDA.
+
 ```{r}
 non_zero_vars <- non_zero_vars[!startsWith(non_zero_vars, "CPRO")&!startsWith(non_zero_vars, "greater")&!endsWith(non_zero_vars, "low1")]
 
@@ -1291,10 +1266,9 @@ df_ml_final <-
   dplyr::select(all_of(non_zero_vars), dea_robust, CPRO, area_sqkm_low, pop_density_low, greater_20k, pop_total_x_pop_density, pop_total_x_area_sqkm, pop_density_X_area_sqkm)
 ```
 
-Keeping greater_20k beause of previous insights about 
+### Data splitting
 
-
-### Data splitting - Training and testing
+Splitting the data set into training and testing data.
 
 ```{r}
 set.seed(123)  
@@ -1317,27 +1291,12 @@ rf_tune_final <- train(dea_robust ~.,
                  method = "rf",
                  preProc=c('scale','center'),
                  trControl = ctrl,
-                 ntree = 1000,
-                 tuneGrid = data.frame(mtry= c(53)), # found to be best tune
+                 ntree = 1000, # found to be the best setting while computationally feasible
+                 tuneGrid = data.frame(mtry= c(53)), # also found to be best tune
                  importance = TRUE)
 ```
 
-Show R² of best model to show is not overfitting
-```{r}
-rf_tune_final$finalModel$importance
-
-summary(rf_tune_final$finalModel)
-
-plot(rf_tune_final)
-
-rf_tune_final_n$bestTune
-
-rf_tune_final_n$results
-```
-
-RMSE was used to select the optimal model using the smallest value.
-The final value used for the model was mtry = 55.
-
+Performance metrics are stored in a table.
 ```{r}
 model_results <- data.frame(dea_robust = test.data$dea_robust)
 model_results$rf <- predict(rf_tune_final, test.data)
@@ -1347,7 +1306,10 @@ performance_metrics_rf <- postResample(pred = model_results$rf, obs = model_resu
 performance_metrics_rf
 model_performance <- data.frame(performance_metrics_rf)
 ```
+
 ### Training Extreme Gradian Boosting
+
+XGBoost is trained with parameters found to be working the best.
 
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)
@@ -1371,23 +1333,14 @@ xgb_tune <- train(dea_robust ~.,
                   tuneGrid = tune_grid)
 ```
 
+Results are appended to the model performance table.
+
 ```{r}
 model_results$xg_boost <- predict(xgb_tune, test.data)
 performance_metrics_xgb <- postResample(pred = model_results$xg_boost,  obs = model_results$dea_robust)
 performance_metrics_xgb
 model_performance <- cbind(data.frame(model_performance, performance_metrics_xgb))
 ```
-
-
-```{r}
-xgb_tune$results
-
-varImp(xgb_tune)
-```
-
-Results
-eta   max_depth gamma colsample_bytree min_child_weight subsample nrounds RMSE Rsquared   MAE
-0.005	10	0.001	0.8	5	0.7	1500	0.03982445	0.6859576   0.03032696
 
 ### Training Catboost
 
@@ -1410,12 +1363,13 @@ fit_params <- list(iterations = 300,
                    loss_function = 'RMSE',
                    l2_leaf_reg = 20,
                    use_best_model = TRUE,
-                   od_type = "Iter")
+                   od_type = "Iter") # stopping model training once overfitting
 
 # Train the CatBoost model
 catboost_tune <- catboost.train(train_pool, params = fit_params, test_pool = test_pool)
 ```
-Performance on test set
+
+Again, metrics are appended to performance metrics data frame.
 
 ```{r}
 # Make predictions on the test data
@@ -1428,58 +1382,57 @@ performance_metrics_cat
 model_performance <- cbind(data.frame(model_performance, performance_metrics_cat))
 ```
 
-### In Text - Model selection
+### Model selection - In Text
+
+Displayinf model performance metrics
 
 ```{r}
 model_performance
 ```
 
-```{r}
-qplot(model_results$xg_boost, model_results$dea_robust) + 
-  labs(title="XGB Regression Observed VS Predicted (All Data)", x="Predicted", y="Observed") +
-  geom_abline(intercept = 0, slope = 1, colour = "blue") +
-  theme_bw()
-```
-
-
 ## Interpretation
 
 ### Under and overachievers
 
-1. Step: Getting prediction information into main data frame
+Creating prediction intervals.
 
 ```{r}
 # Predictions for train data using xgb_tune
 predictions_test <- predict(xgb_tune, test.data)
 
 # Create df_achievement_train with INE, NOMBRE, dea_robust
-# Use training.samples from splitting data to correctly attach prediction data
-df_achievement_test <- cbind(df_model_imp[-training.samples, ], predictions_test)
+df_achievement_test <- cbind(df_model_imp[-training.samples, ], predictions_test) # Using training.samples from splitting data to correctly attach prediction data
 df_achievement <- 
   df_achievement_test |> 
   rename(predictions = predictions_test)
 ```
 
-```{r}
-yhat = df_achievement$predictions
-y = df_achievement$dea_robust
-error = y-yhat
-noise <- error[1:100]
 
-lwr <- yhat[101:length(yhat)] + quantile(noise,0.05, na.rm=T)
+
+```{r}
+yhat <- df_achievement$predictions
+y <- df_achievement$dea_robust
+error <- y-yhat
+noise <- error[1:100] # using error of first 100 observations as noise
+
+# using remaining observations to calculate upper and lower bounds of interval for every observation
+lwr <- yhat[101:length(yhat)] + quantile(noise,0.05, na.rm=T) 
 upr <- yhat[101:length(yhat)] + quantile(noise,0.95, na.rm=T)
 
-predictions = data.frame(real=y[101:length(y)], fit=yhat[101:length(yhat)], lwr=lwr, upr=upr)
+# all data into one data frame
+predictions <- data.frame(real=y[101:length(y)], fit=yhat[101:length(yhat)], lwr=lwr, upr=upr)
 
-predictions = predictions %>% mutate(out=factor(if_else(real<lwr | real>upr,1,0)),
-                                     o_u_achiever = factor(case_when(real < lwr ~ "underachiever",
-                                                                     real > upr ~ "overachiever",
-                                                                     TRUE ~ "as predicted")))
+predictions <- predictions |> 
+  mutate(out=factor(if_else(real<lwr | real>upr,1,0)),# if real value is outside of interval = out
+         o_u_achiever = factor(case_when(real < lwr ~ "underachiever",
+                                         real > upr ~ "overachiever",
+                                         TRUE ~ "as predicted")))
+
 
 mean(predictions$out==1)
 ```
 
-#### In Text - Prediction Interval
+#### Prediction Interval - in Text
 
 ```{r}
 Figure_8 <- 
@@ -1508,7 +1461,8 @@ ggsave(plot = Figure_8,"Data_2020/Figures/Figure_8.png", bg = "white", dpi = 300
 
 #### In Appendix - Names of Over and underachievers
 
-Putting information on how municipalities fared into one data frame
+Putting information on how municipalities fared into one data frame.
+
 ```{r}
 df_achievement_subset <- df_achievement[101:nrow(df_achievement), ]
 
@@ -1519,19 +1473,18 @@ df_achievement <- cbind(df_achievement_subset, predictions_subset)
 unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "overachiever"])
 ```
 
-
 ```{r}
 unique(df_achievement$NOMBRE[df_achievement$o_u_achiever == "underachiever"])
 ```
 
-### In Text - Variable importance
+### Variable importance - in Text
 
-Creating my own plot for consistency
+Using variable importance data to plot in a `ggplot` object.
 
 ```{r}
 var_imp <- varImp(xgb_tune)
 
-# Convert the variable importance data to a data frame
+# converting the variable importance data to a data frame
 var_imp_df <- as.data.frame(var_imp$importance)
 var_imp_df$Variables <- rownames(var_imp_df)
 
@@ -1592,10 +1545,12 @@ ggsave(plot = Figure_9,"Data_2020/Figures/Figure_9.png", bg = "white", width = 1
 
 ### PDP
 
-#### In Text Policy-related Plots
+#### Policy-related Plots - in Text
+
+Partial dependency data for the four most relevant policy-related variables is stored in a data-frame, plotting each plot into a `ggplot` object, while using `patchwork` to create one single figure containing all plots.
 
 ```{r}
-# employment promotion
+# storing data on employment promotion
 partial_plot_emp <- partial(xgb_tune, pred.var = "employment_promotion", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
 p1 <- 
@@ -1663,7 +1618,7 @@ Figure_10
 ggsave(plot = Figure_10, "Data_2020/Figures/Figure_10.png", width = 10, height = 7, dpi = 300, bg = "white")
 ```
 
-#### In Appendix - General Services and Pop Total
+#### General Services and Pop Total - in Appendix
 
 ```{r}
 Figure_B8 <- 
@@ -1677,15 +1632,17 @@ Figure_B8 <-
 
 Figure_B8
 ```
+
 ```{r}
 ggsave(plot = Figure_B8, "Data_2020/Figures/Figure_B8.png", dpi = 300, bg = "white", width = 10, height = 7)
 ```
 
+#### Structural-related predictors - in Text
 
-#### In Text - Structural-related predictors
+The same is done for structural-related predictors.
 
 ```{r}
-# employment promotion
+# Security CCAA
 partial_plot_sec_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_security_3", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
 p5 <- 
@@ -1699,7 +1656,7 @@ p5 <-
         axis.title.y = element_text(size = 10))+
   scale_y_continuous(labels = scales::label_percent())
 
-# General services
+# CCAA General services
 partial_plot_gen_ccaa <- partial(xgb_tune, pred.var = "share_ccaa_general_services", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
 p6 <- 
@@ -1713,7 +1670,7 @@ p6 <-
         axis.title.y = element_text(size = 10))+
   scale_y_continuous(labels = scales::label_percent())
 
-# General services
+# Share of foreigners
 partial_plot_foreigners <- partial(xgb_tune, pred.var = "pop_share_foreigners", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
 p7 <- 
@@ -1728,7 +1685,7 @@ p7 <-
   scale_y_continuous(labels = scales::label_percent()) + 
   scale_x_continuous(breaks = seq(0, max(partial_plot_foreigners$pop_share_foreigners), by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
 
-# Environmental spending
+# Unemployment rate (2020)
 partial_plot_ue <- partial(xgb_tune, pred.var = "ue_pct_2020_log", plot = FALSE, rug = TRUE, train = train.data)
 # Graph
 p8 <- 
@@ -1753,10 +1710,13 @@ Figure_11
 ggsave(plot = Figure_11,"Data_2020/Figures/Figure_11.png", width = 10, height = 7, dpi = 300, bg = "white")
 ```
 
-
 ### SHAP
 
-#### Not Included - Importance Bee Plot
+#### Importance Bee Plot - Not Included
+
+SHAP values are estimated using `shapviz`.
+
+Bee plot is only used for a glance at how SHAP values behave.
 
 ```{r}
 X <- train.data[sample(nrow(train.data), 1000), -which(names(train.data) == "dea_robust")]
@@ -1768,12 +1728,14 @@ sv_importance(sv, kind = "bee", max_display = Inf) +
   theme_minimal()
 ```
 
-#### In Text - Dependence Plot - Structural Features
+#### Dependence Plot - Structural Features - in Text
+
+Dependency plots are altered through looping through the chosen predictors - in this case structural predictors.
 
 ```{r}
 SHAP_structural <- c("pop_share_foreigners", "ue_pct_2020_log", "pop_density_log")
 
-
+# creating list from which information is taken during the loop
 customizations_structural <- list(
   list(
     legend_title = "Share of Unemployed\nfrom Agricultural Sector (log)",
@@ -1792,11 +1754,12 @@ customizations_structural <- list(
   )
 )
 
+# for every variable stored in the object SHAP_structural the function is applied
 plots_structural <- lapply(seq_along(SHAP_structural), function(i) {
   var <- SHAP_structural[i]
-  customizations_structural <- customizations_structural[[i]]
+  customizations_structural <- customizations_structural[[i]] # takes i-spot in the list
   
-  plot <- sv_dependence(sv, v = var) + 
+  plot <- sv_dependence(sv, v = var) + # applies cosmetic alterations to the plots
     theme_minimal() +
     labs(colour = customizations_structural$legend_title,
          x = customizations_structural$x_axis_label) +
@@ -1807,7 +1770,7 @@ plots_structural <- lapply(seq_along(SHAP_structural), function(i) {
 
 # Display the first plot as an example
 p9 <- 
-  plots_structural[[1]] + 
+  plots_structural[[1]] + #plots are stored in a list - hence must be chosen from that list
   scale_x_continuous(breaks = seq(0, 65, by = 10), minor_breaks = NULL,  labels = scales::label_percent(scale = 1))
 
 
@@ -1827,7 +1790,9 @@ Figure_12
 ggsave(plot = Figure_12,"Data_2020/Figures/Figure_12.png", width = 10, height = 12, dpi = 300, bg = "white")
 ```
 
-#### In Text - Dependence plots - Provinces
+#### Dependence plots - Provinces - in Text
+
+Since only one variable is required in this step, all is done manually.
 
 ```{r}
 SHAP_region <- "CPRO"
@@ -1845,8 +1810,9 @@ Figure_13
 ggsave(plot = Figure_13,"Data_2020/Figures/Figure_13.png", dpi = 300, width = 12, height = 7, bg = "white")
 ```
 
+#### Dependence Plots - Policy Features - in Text
 
-#### In Text - Dependence Plots - Policy Features
+As before, variables of interest are stored in an object, customization are stored in a list, and plots are created by looping through a function.
 
 ```{r}
 SHAP_policy <- c("employment_promotion", "environment_log","social_services","general_services_2")
@@ -1911,30 +1877,31 @@ Figure_14
 ggsave(plot = Figure_14,"Data_2020/Figures/Figure_14.png", width = 14, height = 10, dpi = 300, bg = "white")
 ```
 
-
-## Appendix 
+## Appendix
 
 ### Historical Unemployment Rate Development
 
+Unfortunately, the data recovered from the World Bank Group is very messy. Hency data is read into the environment line by line.
+
 ```{r}
-# Read the file line by line
+# reading file line by line
 lines <- readLines("Data_2020/world_ue_data.csv", encoding = "UTF-8")
 
-# Extract column names from the third line
+# column names from the third line
 column_names <- unlist(strsplit(lines[5], ",", fixed = TRUE))
-column_names <- gsub('"', "", column_names)  # Remove quotes
+column_names <- gsub('"', "", column_names)  # Removing quotes
 column_names <- gsub("\\\\", "", column_names)
 
-# to shift columns one column to the right
+# shifting columns one column to the right
 column_names <- c("country_name", column_names)
 
 
-# Split each line into columns based on commas
+# using commas to split lines into columns
 data <- lapply(lines[-(1:5)], function(line) {
   unlist(strsplit(line, ",", fixed = TRUE))
 })
 
-# Convert the list to a data frame and assign column names
+# converting list into data frame and assigning column names
 data <- as.data.frame(do.call(rbind, data))
 names(data) <- column_names
 
@@ -1965,7 +1932,7 @@ Figure_1 <-
   scale_y_continuous(labels = scales::label_percent()) +
   scale_x_date(date_labels = "%Y", breaks = "1 year", expand = c(0, 0))+ 
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # creating shaded areas
   annotate(
     geom = "rect",
     xmin = as.Date("2007-02-10"), xmax = as.Date("2012-12-01"),
@@ -1991,13 +1958,15 @@ ggsave(plot = Figure_1,"Data_2020/Figures/Figure_1.png", dpi = 300, bg = "white"
 Where is the difference
 
 ```{r}
+# for every community in data frame used in this project count absolute number of municipalities
 m <-
   df_dea |>
   mutate(CODAUTO_data = CODAUTO) |> 
   group_by(CODAUTO_data, CCAA) |> 
   distinct(INE) |> 
   count(CODAUTO_data)
-# adding missing community 
+
+# adding missing communities to join data
 new_row <- data.frame(CODAUTO_data = c("18","19"), CCAA = c("Melilla", "Ceuta"),n = c(0, 0))
 m <- m |> 
   bind_rows(new_row)
@@ -2007,6 +1976,7 @@ codigo_municipio <- read_excel("Data_2020/diccionario24.xlsx", skip = 1, col_nam
   mutate(INE = paste0(CPRO, CMUN),
          Provincia = as.integer(CPRO))
 
+# for every community in the official registry counting total number of municipalities
 o <- 
   codigo_municipio |>
   mutate(CODAUTO_original = CODAUTO) |> 
@@ -2014,11 +1984,13 @@ o <-
   distinct(INE) |> 
   count(CODAUTO_original)
 
+# joining data and estimating the difference
 difference_n_mun <- o |> 
   left_join(m, by = c("CODAUTO_original"= "CODAUTO_data")) |> 
   mutate(difference = n.x - n.y,
          proportion = (difference/n.x)*100)
 
+# plotting the difference by autonomous community
 Figure_B1 <- 
   difference_n_mun |> 
   filter(!CCAA == "Ceuta" & !CCAA == "Melilla") |> 
@@ -2040,60 +2012,62 @@ Figure_B1
 ggsave(plot = Figure_B1, "Data_2020/Figures/Figure_B1.png", dpi = 300, width = 10, height = 7, bg = "white")
 ```
 
-
 ### Data summary
 
 ```{r}
+# creating summary
 summary_df <- psych::describe(df_summary)
 
+# adding information on variable names
 summary_df$variable <- rownames(summary_df)
+# variable column to beginning
 summary_df <- summary_df[, c("variable", colnames(summary_df)[1:(ncol(summary_df)-1)])]
 
+#removing columns
 summary_df <- summary_df[, !colnames(summary_df) %in% c("trimmed", "mad", "skew", "kurtosis")]
 
+# adding information into flextable object
 ft <- flextable(summary_df)
-ft <- set_caption(ft, caption = "Summary Statistics of df_summary")
 
 ft <- theme_vanilla(ft) |> 
   autofit() |> 
   set_table_properties(width = 0.8, layout = "autofit") |> # smaller table
-  align(j = 2:ncol(summary_df), align = "center", part = "all") |>   # Center text in all columns except the first
-  colformat_double(j = 2:ncol(summary_df), digits = 2) |>  # Format numbers to 2 decimal places
+  align(j = 2:ncol(summary_df), align = "center", part = "all") |>   #  text in all columns centered except the first
+  colformat_double(j = 2:ncol(summary_df), digits = 2) |>  # 2 decimal places
   fontsize(size = 8, part = "all") 
 
+# creating word doc
 doc <- read_docx()
 
-# Add the flextable to the Word document
+# adding flextable to word doc
 doc <- body_add_flextable(doc, value = ft)
 
-# Save the Word document
+# saving word document
 print(doc, target = "Data_2020/Tables/summary_table.docx")
 ```
 
 ### Template
 
-```{r}
-# Create an empty data frame with the same structure but 6 rows
-empty_df <- summary_df[1:6, ]
-empty_df[] <- NA  # Fill the data frame with NA to make it empty
+For the tables in the final table, a template table is created.
 
-# Create a flextable from the empty data frame
+```{r}
+# creating an empty data frame
+empty_df <- summary_df[1:6, ]
+empty_df[] <- NA  # filling with NA
+
+# flextable object from empty table
 ft_empty <- flextable(empty_df)
 
-# Customize the flextable for better readability
-ft_empty <- ft_empty %>%
-  theme_vanilla() %>%
-  autofit() %>%
+# customizing to align with summary statistics table 
+ft_empty <- ft_empty |> 
+  theme_vanilla() |> 
+  autofit() |> 
   set_table_properties(width = 0.8, layout = "autofit") %>%
   align(j = 2:ncol(empty_df), align = "center", part = "all")
 
-# Create a new Word document
 doc_empty <- read_docx()
 
-# Add the empty flextable to the new Word document
 doc_empty <- body_add_flextable(doc_empty, value = ft_empty)
 
-# Save the new Word document
 print(doc_empty, target = "Data_2020/Tables/empty_template_table.docx")
 ```
-
