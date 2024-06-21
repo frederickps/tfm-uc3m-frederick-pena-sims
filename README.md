@@ -21,7 +21,7 @@ You can find the budgetary information of the Spanish local entities on the webs
 
 _Age data per municipality_
 
-Go to the website of the [Institutio Nacional de Estadísticas]([url](https://www.ine.es/jaxiT3/Tabla.htm?t=33575&L=0)) and download the entire file. Store the file under 'avg_age_2020'. This step is not strictly necessary. A cleaned up version is stored in 'Data_2020' as 'avg_age_final'.
+Go to the website of the [Institutio Nacional de Estadísticas](https://www.ine.es/jaxiT3/Tabla.htm?t=33575&L=0) and download the entire file. Store the file under 'avg_age_2020'. This step is not strictly necessary. A cleaned up version is stored in 'Data_2020' as 'avg_age_final'.
 
 ### 2 Data preprocessing
 
