@@ -51,8 +51,8 @@ Spending and revenue data is taken from the [Ministry for Finance](https://servi
 ```{r}
 unique(odbc::odbcListDrivers()[[1]])
 
-# change into adequate source
-dbname <- "C:/Users/frede/Documents/Master Thesis II/master-thesis/Data_2020/Liquidaciones2020.mdb" 
+# change into adequate path
+dbname <- "C:/Users/frede/Documents/Master Thesis II/tfm-uc3m-frederick-pena-sims/Data_2020/Liquidaciones2020.mdb" 
 
 con <- dbConnect(odbc::odbc(),
                  Driver = "Microsoft Access Driver (*.mdb, *.accdb)",
