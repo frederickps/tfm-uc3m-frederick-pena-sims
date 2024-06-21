@@ -32,6 +32,9 @@ The file 'tfm_fetching_and_processing.qmd' contains the R-script used to read, t
 
 The file 'tfm_analysis.qmd' contains the R-script to reproduce the analysis and reports on non-included steps inbetween. Figures and tables produced during the process are already stored in 'Figures' and 'Tables' respectively, but can be repoduced by going through the code.
 
+PS:
+If you just want to reproduce the analysis, the data file containing all variables generated in the previous step is also part of this repository.
+
 
 ### 4 Doubts and questions
 
