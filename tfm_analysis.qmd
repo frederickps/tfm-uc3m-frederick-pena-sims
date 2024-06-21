@@ -306,7 +306,7 @@ In order to select only valid variables for PCA, a separate data frame is constr
 df_pca <-
   df_dea |> 
   select_if(is.numeric) |> 
-  select(-c(CODAUTO, CPRO, median_inc_con_unit, diff_ue, per_capita_CCAA, dist_prov_cap, n_firms, per_capita_n_firms, per_capita_MUN)) |> 
+  select(-c(CPRO, median_inc_con_unit, diff_ue, per_capita_CCAA, dist_prov_cap, n_firms, per_capita_n_firms, per_capita_MUN)) |> 
   drop_na()
 
 set.seed(53456)
@@ -413,7 +413,7 @@ As for PCA, a data frame for clustering is created.
 df_clus <-
   df_dea |> 
   select_if(is.numeric) |> 
-  select(-c(CODAUTO, CPRO, diff_ue, median_inc_con_unit, per_capita_CCAA, per_capita_MUN)) |> 
+  select(-c(CPRO, diff_ue, median_inc_con_unit, per_capita_CCAA, per_capita_MUN)) |> 
   drop_na()
 ```
 
@@ -559,7 +559,7 @@ Using random forest, missing values are imputed. First all variables not used fu
 ```{r}
 df_model <- 
   df_dea |> 
-  select(-c(CODAUTO, dist_prov_cap, per_capita_CCAA, per_capita_MUN, per_capita_n_firms, median_inc_con_unit, party_mun, party_ccaa, diff_ue))
+  select(-c(CODAUTO, dist_prov_cap, per_capita_CCAA, per_capita_MUN, per_capita_n_firms, median_inc_con_unit, party_mun, party_ccaa, diff_ue, n_firms))
 ```
 
 ```{r}
@@ -583,6 +583,7 @@ df_model_robust <- df_model_imp |>
 ## Modelling - Target normal
 
 ### Lasso regression
+
 ```{r}
 # Define the control parameters for LASSO regression
 ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
@@ -663,7 +664,7 @@ test_results$rf <- predict(rf_tune, test.data_pre_no)
 postResample(pred = test_results$rf,  obs = test_results$dea_robust)
 ```
 
-## Modelling - Target log 
+## Modelling - Target log
 
 ### Lasso regression
 
@@ -899,6 +900,7 @@ rf_cube <- postResample(pred = test_results$rf_cube,  obs = test_results$dea_rob
 ### Modelling - Compare Results - in Text
 
 Results are subsequently stored in one common data frame for a better overview.
+
 ```{r}
 cube_df <- as.data.frame(t(rf_cube))
 log_df <- as.data.frame(t(rf_log))
@@ -915,7 +917,7 @@ rf_metrics_table <- rbind(normal_df, log_df,  log10_df, cube_df)
 rf_metrics_table
 ```
 
-## MAE Source 
+## MAE Source
 
 This chapter aims to find the sources of the Mean Absolute Error. To do that, absolute errors from the test set are joined with the original data-frame after adding the target variable.
 
@@ -1011,7 +1013,7 @@ Figure_B6
 ggsave(plot = Figure_B6, "Data_2020/Figures/Figure_B6.png", bg = "white", dpi = 300, width = 10, height = 7)
 ```
 
-### Mapping MAE - in Appendix 
+### Mapping MAE - in Appendix
 
 As the efficiency score before, the absolute error for municipalities in the test data is mapped.
 
@@ -1050,7 +1052,7 @@ A simple linear regression including all variables was run to find patterns. One
 ```{r}
 df_mae_lm <-
   na.omit(df_mae) |> 
-  select(-c(INE, NOMBRE, CCAA, party_ccaa, party_mun, median_inc_con_unit, target, dea_robust))
+  select(-c(INE, NOMBRE, CCAA, party_ccaa, party_mun, median_inc_con_unit, diff_ue, dea_robust))
 model <- lm(mae_rf ~ ., data = df_mae_lm)
 
 # Print summary of the model
@@ -1066,7 +1068,8 @@ As such, the average absolute error by province is calculated, with apparent var
 ```{r}
 CPRO_mae <- df_mae |> 
   group_by(CPRO) |> 
-  summarise(mae_rf = mean(mae_rf, na.rm = TRUE))
+  summarise(mae_rf = mean(mae_rf, na.rm = TRUE)) |> 
+  mutate(CPRO = as.character(CPRO))
 
 # Create the graph
 Figure_7 <- 
@@ -1173,6 +1176,7 @@ According to the scatter plots above three binary variables are created using th
 Since municipality size seemingly plays such an important role, information on population size is interacted with all other numeric columns. Since we may expect population size to be highly correlated with with population density and area in sqkm, we would expect very similar interaction variables if interactions were applied with all three variables adding limited information. This was confirmed as, interacting all population size variables with all other numeric columns was tested but produced slightly worse results. Secondly, all municipality-size related variables are interacted with one another. Lastly, all variables are squared, cubed, and applied a logarithm.
 
 To realize the first step, a function is created.
+
 ```{r}
 generate_interactions <- function(df) {
   # only numeric columns except dea_robust (efficiency score)
@@ -1202,7 +1206,6 @@ generate_interactions <- function(df) {
   return(df_interactions)
 }
 ```
-
 
 ```{r}
 # to apply sqauring, cubing, and logarithm
@@ -1236,6 +1239,7 @@ df_ml$dea_robust_3 <- NULL
 ### Lasso regression
 
 For feature selection, a LASSO model is trained, as previously.
+
 ```{r}
 ctrl <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
 
@@ -1292,11 +1296,12 @@ rf_tune_final <- train(dea_robust ~.,
                  preProc=c('scale','center'),
                  trControl = ctrl,
                  ntree = 1000, # found to be the best setting while computationally feasible
-                 tuneGrid = data.frame(mtry= c(53)), # also found to be best tune
+                 tuneGrid = data.frame(mtry= c(45:53)), #best tunes found in this range 
                  importance = TRUE)
 ```
 
 Performance metrics are stored in a table.
+
 ```{r}
 model_results <- data.frame(dea_robust = test.data$dea_robust)
 model_results$rf <- predict(rf_tune_final, test.data)
@@ -1406,8 +1411,6 @@ df_achievement <-
   df_achievement_test |> 
   rename(predictions = predictions_test)
 ```
-
-
 
 ```{r}
 yhat <- df_achievement$predictions
